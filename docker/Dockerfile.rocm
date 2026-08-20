@@ -1,0 +1,59 @@
+# RTG-SLAM controlled/stress mapper image for AMD GPUs.
+# End-to-end paper reproduction remains CUDA-canonical until equivalence passes.
+ARG ROCM_PYTORCH_IMAGE=rocm/pytorch:rocm7.2.4_ubuntu22.04_py3.10_pytorch_release_2.9.1@sha256:9c9592175fece788d6c0b86059012f49b568dc95c98c13879dfdf89c30342559
+FROM ${ROCM_PYTORCH_IMAGE}
+
+ARG RTG_UPSTREAM_SHA=49dada148551961e2dee38040a4f760fa1b0f01d
+ARG RTG_CUDA_UTILS_SHA=24dcf0aec00f35229f247ac206a5c0b141e15991
+ARG RTG_PYBIND_SHA=6be964f432f26f8c1802ab579190a0f9081e6147
+ARG RTG_ORB_BACKEND_SHA=9cb671553e72782f354a91825187cdcfc83e6f30
+ARG ROCM_ARCH=gfx1201
+ARG AMD_MOAT_SHA=f69bb67d70e7a47af00095dab7029c230a30be73
+ARG AMD_GAUSSIAN_SPLATTING_ROCM_SHA=dfb1dd1cbcc508e08c7395b27953620121dad1fc
+ENV DEBIAN_FRONTEND=noninteractive \
+    ROCM_HOME=/opt/rocm \
+    CUDA_HOME=/opt/rocm \
+    PYTORCH_ROCM_ARCH=${ROCM_ARCH} \
+    TORCH_CUDA_ARCH_LIST="" \
+    EXPECT_BACKEND=rocm \
+    PIP_NO_CACHE_DIR=1
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+      build-essential git ninja-build cmake pkg-config \
+      libgl1 libglib2.0-0 libsm6 libxext6 libxrender1 \
+    && rm -rf /var/lib/apt/lists/*
+
+# Clone the exact parent-pinned GPU submodule. The ORB and pybind SHAs are
+# retained as provenance but are not built in this mapper-core image because
+# the controlled ResearchFlow lane explicitly disables the ORB frontend.
+WORKDIR /opt
+RUN git clone https://github.com/CJAPPLE5/RTG-SLAM-cuda_utils.git rtg-cuda-utils \
+    && git -C rtg-cuda-utils checkout --detach ${RTG_CUDA_UTILS_SHA} \
+    && test "$(git -C rtg-cuda-utils rev-parse HEAD)" = "${RTG_CUDA_UTILS_SHA}"
+COPY docker/patches/rocm-embedded-extensions.py /tmp/rocm-embedded-extensions.py
+RUN cd /opt/rtg-cuda-utils \
+    && python /tmp/rocm-embedded-extensions.py \
+    && python -m pip install --no-build-isolation ./cuda_utils \
+    && python -m pip install --no-build-isolation ./diff-gaussian-rasterizer-depth \
+    && python -m pip install --no-build-isolation ./simple-knn
+
+WORKDIR /workspace/RTG-SLAM
+COPY . /workspace/RTG-SLAM
+RUN python -m pip install \
+      plyfile tqdm tensorboard torchmetrics pytorch_msssim trimesh scikit-image \
+      open3d pyyaml scipy opencv-python-headless matplotlib GPUtil
+
+COPY scripts/smoke/rtg_extensions.py /opt/smoke/rtg_extensions.py
+
+LABEL researchflow.method="rtg_slam" \
+      researchflow.upstream.sha="${RTG_UPSTREAM_SHA}" \
+      researchflow.rtg_cuda_utils.sha="${RTG_CUDA_UTILS_SHA}" \
+      researchflow.rtg_pybind.sha="${RTG_PYBIND_SHA}" \
+      researchflow.rtg_orb_backend.sha="${RTG_ORB_BACKEND_SHA}" \
+      researchflow.backend="rocm" \
+      researchflow.rocm="7.2.4" \
+      researchflow.amd_moat.sha="${AMD_MOAT_SHA}" \
+      researchflow.amd_gaussian_splatting_reference.sha="${AMD_GAUSSIAN_SPLATTING_ROCM_SHA}" \
+      researchflow.controlled.frontend="disabled"
+
+CMD ["python", "/opt/smoke/rtg_extensions.py"]
