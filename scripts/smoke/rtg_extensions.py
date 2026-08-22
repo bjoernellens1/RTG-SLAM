@@ -25,8 +25,12 @@ pts = torch.tensor(
     dtype=torch.float32,
     device=device,
 )
-d2 = distCUDA2(pts)
-assert d2.is_cuda and torch.isfinite(d2).all()
+# RTG's own simple-knn spatial.cu binds distCUDA2 as
+# std::tuple<torch::Tensor, torch::Tensor> (mean_dist, knn_indices) -- unlike
+# upstream 3DGS's distCUDA2, which returns a single tensor.
+d2_mean, d2_indices = distCUDA2(pts)
+assert d2_mean.is_cuda and torch.isfinite(d2_mean).all()
+assert d2_indices.is_cuda
 
 # RTG-specific map accumulation extension.
 H = W = 2
