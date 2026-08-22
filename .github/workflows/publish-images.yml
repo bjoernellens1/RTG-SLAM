@@ -1,0 +1,209 @@
+name: Publish qualified RTG-SLAM images
+
+on:
+  push:
+    branches: [rocm-7.2]
+    paths: ["docker/**", "scripts/**", ".github/workflows/publish-images.yml"]
+  pull_request:
+    branches: [main, rocm-7.2]
+    paths: ["docker/**", "scripts/**", ".github/workflows/publish-images.yml"]
+  schedule:
+    - cron: "37 3 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: write
+
+concurrency:
+  group: rtg-slam-images-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+env:
+  AMD_PORT_AUDIT_SHA256: c77e18af1ccaecd3d0803be300b6c7091fe847d3db72a181fc03f2613c9498b5
+
+jobs:
+  build-rocm:
+    runs-on: ubuntu-latest
+    timeout-minutes: 360
+    strategy:
+      fail-fast: false
+      matrix:
+        arch: [gfx1201, gfx1151, gfx90a]
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event_name == 'schedule' && 'rocm-7.2' || github.ref }}
+      - name: Resolve checked-out source SHA
+        id: source
+        run: echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+      - uses: docker/setup-buildx-action@v3
+      - if: github.event_name != 'pull_request'
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Build immutable ROCm candidate
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: docker/Dockerfile.rocm
+          push: ${{ github.event_name != 'pull_request' }}
+          tags: ghcr.io/${{ github.repository_owner }}/rtg-slam-rocm:sha-${{ steps.source.outputs.sha }}-${{ matrix.arch }}
+          build-args: |
+            ROCM_ARCH=${{ matrix.arch }}
+          cache-from: type=gha,scope=rtg-slam-rocm-${{ matrix.arch }}
+          cache-to: type=gha,scope=rtg-slam-rocm-${{ matrix.arch }},mode=max
+
+  build-cuda:
+    runs-on: ubuntu-latest
+    timeout-minutes: 360
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event_name == 'schedule' && 'rocm-7.2' || github.ref }}
+      - name: Resolve checked-out source SHA
+        id: source
+        run: echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+      - uses: docker/setup-buildx-action@v3
+      - if: github.event_name != 'pull_request'
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Build immutable CUDA author candidate
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: docker/Dockerfile.cuda
+          push: ${{ github.event_name != 'pull_request' }}
+          tags: ghcr.io/${{ github.repository_owner }}/rtg-slam-cuda:sha-${{ steps.source.outputs.sha }}
+          cache-from: type=gha,scope=rtg-slam-cuda-author
+          cache-to: type=gha,scope=rtg-slam-cuda-author,mode=max
+
+  qualify-rocm:
+    needs: build-rocm
+    if: github.event_name != 'pull_request'
+    strategy:
+      fail-fast: false
+      matrix:
+        arch: [gfx1201, gfx1151, gfx90a]
+    runs-on: [self-hosted, linux, rocm, "${{ matrix.arch }}"]
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event_name == 'schedule' && 'rocm-7.2' || github.ref }}
+      - name: Resolve checked-out source SHA
+        id: source
+        run: echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Resolve candidate digest
+        id: image
+        shell: bash
+        run: |
+          set -euo pipefail
+          tag="ghcr.io/${GITHUB_REPOSITORY_OWNER}/rtg-slam-rocm:sha-${{ steps.source.outputs.sha }}-${{ matrix.arch }}"
+          docker pull "$tag"
+          digest_ref="$(docker inspect --format='{{index .RepoDigests 0}}' "$tag")"
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+          echo "digest_ref=$digest_ref" >> "$GITHUB_OUTPUT"
+          echo "digest=${digest_ref##*@}" >> "$GITHUB_OUTPUT"
+      - name: Execute RTG mapping extensions on AMD GPU
+        run: |
+          docker run --rm --device=/dev/kfd --device=/dev/dri \
+            --group-add video --ipc=host --shm-size=16G \
+            "${{ steps.image.outputs.digest_ref }}" \
+            python /opt/smoke/rtg_extensions.py | tee rtg-rocm-smoke.json
+      - name: Write qualification manifest
+        run: |
+          python scripts/qualification/write_manifest.py \
+            --image "${{ steps.image.outputs.tag }}" \
+            --digest "${{ steps.image.outputs.digest }}" \
+            --gpu-arch "${{ matrix.arch }}" \
+            --backend rocm \
+            --backend-version 7.2.4 \
+            --amd-port-audit-sha256 "${AMD_PORT_AUDIT_SHA256}" \
+            --output container-qualification.json
+      - uses: actions/upload-artifact@v4
+        with:
+          name: rtg-slam-rocm-qualified-${{ matrix.arch }}
+          path: |
+            container-qualification.json
+            rtg-rocm-smoke.json
+      - name: Promote last-known-good tag
+        run: |
+          docker buildx imagetools create \
+            --tag "ghcr.io/${GITHUB_REPOSITORY_OWNER}/rtg-slam-rocm:rocm-7.2.4-${{ matrix.arch }}" \
+            "${{ steps.image.outputs.digest_ref }}"
+
+  qualify-cuda:
+    needs: build-cuda
+    if: github.event_name != 'pull_request'
+    runs-on: [self-hosted, linux, cuda]
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event_name == 'schedule' && 'rocm-7.2' || github.ref }}
+      - name: Resolve checked-out source SHA
+        id: source
+        run: echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Resolve candidate digest
+        id: image
+        shell: bash
+        run: |
+          set -euo pipefail
+          tag="ghcr.io/${GITHUB_REPOSITORY_OWNER}/rtg-slam-cuda:sha-${{ steps.source.outputs.sha }}"
+          docker pull "$tag"
+          digest_ref="$(docker inspect --format='{{index .RepoDigests 0}}' "$tag")"
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+          echo "digest_ref=$digest_ref" >> "$GITHUB_OUTPUT"
+          echo "digest=${digest_ref##*@}" >> "$GITHUB_OUTPUT"
+      - name: Execute RTG CUDA mapping extensions
+        run: |
+          docker run --rm --gpus=all --ipc=host --shm-size=16G \
+            "${{ steps.image.outputs.digest_ref }}" \
+            python /opt/smoke/rtg_extensions.py | tee rtg-cuda-smoke.json
+      - name: Verify RTG ORB-SLAM2 binding
+        run: |
+          docker run --rm "${{ steps.image.outputs.digest_ref }}" \
+            python /opt/smoke/rtg_orb.py | tee rtg-orb-smoke.json
+      - name: Resolve NVIDIA architecture
+        id: gpu
+        shell: bash
+        run: |
+          cap="$(nvidia-smi --query-gpu=compute_cap --format=csv,noheader | head -n1 | tr -d ' .')"
+          echo "arch=sm${cap}" >> "$GITHUB_OUTPUT"
+      - name: Write qualification manifest
+        run: |
+          python scripts/qualification/write_manifest.py \
+            --image "${{ steps.image.outputs.tag }}" \
+            --digest "${{ steps.image.outputs.digest }}" \
+            --gpu-arch "${{ steps.gpu.outputs.arch }}" \
+            --backend cuda \
+            --backend-version 11.7 \
+            --output container-qualification.json
+      - uses: actions/upload-artifact@v4
+        with:
+          name: rtg-slam-cuda-author-qualified
+          path: |
+            container-qualification.json
+            rtg-cuda-smoke.json
+            rtg-orb-smoke.json
+      - name: Promote last-known-good author tag
+        run: |
+          docker buildx imagetools create \
+            --tag "ghcr.io/${GITHUB_REPOSITORY_OWNER}/rtg-slam-cuda:author" \
+            "${{ steps.image.outputs.digest_ref }}"
