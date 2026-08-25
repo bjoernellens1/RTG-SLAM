@@ -133,6 +133,12 @@ def patch_file(path: Path) -> None:
             "__global__ void identifyTileRanges(int L, uint64_t *point_list_keys, uint2 *ranges, const uint32_t tile_count, const bool debug)",
         )
         text = text.replace(
+            "__global__ void identifyTileRanges(int L, uint64_t *point_list_keys, uint2 *ranges, const uint32_t tile_count, const bool debug)\n"
+            "{\n\tauto idx = cg::this_grid().thread_rank();",
+            "__global__ void identifyTileRanges(int L, uint64_t *point_list_keys, uint2 *ranges, const uint32_t tile_count, const bool debug)\n"
+            "{\n\tauto idx = blockIdx.x * blockDim.x + threadIdx.x;",
+        )
+        text = text.replace(
             "\tuint32_t currtile = key >> 32;",
             "\tuint32_t currtile = key >> 32;\n"
             "\tif (currtile >= tile_count)\n"

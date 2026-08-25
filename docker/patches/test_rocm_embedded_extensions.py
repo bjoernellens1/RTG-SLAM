@@ -22,6 +22,7 @@ def test_empty_flat_raster_skips_zero_grid_and_marks_no_hit(tmp_path: Path) -> N
     implementation.write_text(
         "__global__ void identifyTileRanges(int L, uint64_t *point_list_keys, uint2 *ranges)\n"
         "{\n"
+        "\tauto idx = cg::this_grid().thread_rank();\n"
         "\tuint32_t currtile = key >> 32;\n"
         "}\n"
         "identifyTileRanges<<<1, 1>>>(num_rendered, point_list_keys, ranges);\n"
@@ -47,6 +48,7 @@ def test_empty_flat_raster_skips_zero_grid_and_marks_no_hit(tmp_path: Path) -> N
     assert "if (tile_num == 0)\n\t\treturn num_rendered;" in implementation.read_text()
     assert "if (tile_num == 0) return;\n\tGeometryState geomState" in implementation.read_text()
     assert "uint2 *ranges, const uint32_t tile_count, const bool debug)" in implementation.read_text()
+    assert "auto idx = blockIdx.x * blockDim.x + threadIdx.x;" in implementation.read_text()
     assert "if (currtile >= tile_count)" in implementation.read_text()
     assert "point_list_keys, ranges, tile_grid.x * tile_grid.y, debug);" in implementation.read_text()
     assert '"[RTG_NATIVE_STAGE] " << __FILE__ << ":" << __LINE__' in auxiliary.read_text()
