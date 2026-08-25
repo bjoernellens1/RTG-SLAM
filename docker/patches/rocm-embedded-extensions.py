@@ -129,6 +129,37 @@ def patch_file(path: Path) -> None:
     # the zero-tile launch guard above takes effect.
     if path.name == "rasterizer_impl.cu":
         text = text.replace(
+            "__global__ void identifyTileRanges(int L, uint64_t *point_list_keys, uint2 *ranges)",
+            "__global__ void identifyTileRanges(int L, uint64_t *point_list_keys, uint2 *ranges, const uint32_t tile_count, const bool debug)",
+        )
+        text = text.replace(
+            "\tuint32_t currtile = key >> 32;",
+            "\tuint32_t currtile = key >> 32;\n"
+            "\tif (currtile >= tile_count)\n"
+            "\t{\n"
+            "\t\tif (debug) printf(\"[RTG_INVALID_TILE_KEY] idx=%u currtile=%u tile_count=%u\\n\", (unsigned)idx, currtile, tile_count);\n"
+            "\t\treturn;\n"
+            "\t}",
+        )
+        text = text.replace(
+            "\t\tuint32_t prevtile = point_list_keys[idx - 1] >> 32;",
+            "\t\tuint32_t prevtile = point_list_keys[idx - 1] >> 32;\n"
+            "\t\tif (prevtile >= tile_count)\n"
+            "\t\t{\n"
+            "\t\t\tif (debug) printf(\"[RTG_INVALID_TILE_KEY] idx=%u prevtile=%u tile_count=%u\\n\", (unsigned)idx, prevtile, tile_count);\n"
+            "\t\t\treturn;\n"
+            "\t\t}",
+        )
+        text = text.replace(
+            "identifyTileRanges<<<1, 1>>>(num_rendered, point_list_keys, ranges);",
+            "identifyTileRanges<<<1, 1>>>(num_rendered, point_list_keys, ranges, tile_grid.x * tile_grid.y, debug);",
+        )
+        text = text.replace(
+            "\t\t\tnum_rendered,\n\t\t\tbinningState.point_list_keys,\n\t\t\timgState.ranges);",
+            "\t\t\tnum_rendered,\n\t\t\tbinningState.point_list_keys,\n\t\t\timgState.ranges,\n"
+            "\t\t\ttile_grid.x * tile_grid.y,\n\t\t\tdebug);",
+        )
+        text = text.replace(
             "CHECK_CUDA(cudaMemcpy(tile_indices, tile_indices_cpu.data(), tile_indices_cpu.size() * sizeof(int), cudaMemcpyHostToDevice), debug);",
             "if (!tile_indices_cpu.empty())\n"
             "\t\tCHECK_CUDA(cudaMemcpy(tile_indices, tile_indices_cpu.data(), tile_indices_cpu.size() * sizeof(int), cudaMemcpyHostToDevice), debug);",
