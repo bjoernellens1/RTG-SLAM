@@ -107,6 +107,12 @@ class Renderer:
                     dtype=torch.int32,
                 )
             )
+        if os.environ.get("RTG_DEBUG_SYNC") == "1":
+            print(
+                "[RTG_DEBUG_INPUT] points="
+                f"{means3D.shape[0]} tiles={tile_mask.count_nonzero().item()}",
+                flush=True,
+            )
         
         render_results = self.rasterizer(
             means3D=means3D,

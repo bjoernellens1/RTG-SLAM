@@ -6,5 +6,6 @@ def test_renderer_has_opt_in_extension_boundary_syncs():
 
     assert 'os.environ.get("RTG_DEBUG_SYNC") == "1"' in source
     assert 'debug=os.environ.get("RTG_DEBUG_SYNC") == "1"' in source
+    assert '"[RTG_DEBUG_INPUT] points="' in source
     assert '"[RTG_DEBUG_SYNC] rasterizer-return"' in source
     assert '"[RTG_DEBUG_SYNC] normal-index"' in source
