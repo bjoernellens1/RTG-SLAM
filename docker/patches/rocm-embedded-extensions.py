@@ -128,6 +128,17 @@ def patch_file(path: Path) -> None:
     # is empty for a valid no-visible-Gaussian view, so avoid that copy before
     # the zero-tile launch guard above takes effect.
     if path.name == "rasterizer_impl.cu":
+        for offsets in ("point_offsets", "geomState.point_offsets"):
+            copy_line = (
+                f"CHECK_CUDA(cudaMemcpy(&num_rendered, {offsets} + P - 1, sizeof(int), "
+                "cudaMemcpyDeviceToHost), debug);"
+            )
+            text = text.replace(
+                copy_line,
+                copy_line + "\n"
+                "\tif (debug) std::cerr << \"[RTG_BINNING] P=\" << P << \" num_rendered=\" << num_rendered "
+                "<< \" tiles=\" << tile_grid.x * tile_grid.y << std::endl;",
+            )
         text = text.replace(
             "__global__ void identifyTileRanges(int L, uint64_t *point_list_keys, uint2 *ranges)",
             "__global__ void identifyTileRanges(int L, uint64_t *point_list_keys, uint2 *ranges, const uint32_t tile_count, const bool debug)",
