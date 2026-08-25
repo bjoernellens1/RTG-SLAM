@@ -21,6 +21,10 @@ def test_empty_flat_raster_skips_zero_grid_and_marks_no_hit(tmp_path: Path) -> N
     implementation = rasterizer / "rasterizer_impl.cu"
     implementation.write_text(
         "CHECK_CUDA(cudaMemcpy(tile_indices, tile_indices_cpu.data(), tile_indices_cpu.size() * sizeof(int), cudaMemcpyHostToDevice), debug);\n"
+        "tile_num = tile_indices_cpu.size();\n"
+        "void backward()\n{\n"
+        "\tGeometryState geomState = GeometryState::fromChunk(geom_buffer, P);\n"
+        "}\n"
     )
     auxiliary = rasterizer / "auxiliary.h"
     auxiliary.write_text(
@@ -35,4 +39,6 @@ def test_empty_flat_raster_skips_zero_grid_and_marks_no_hit(tmp_path: Path) -> N
     assert "out_hit_depth = torch::full({1, H, W}, -1, int_opts);" in points.read_text()
     assert "out_hit_color = torch::full({1, H, W}, -1, int_opts);" in points.read_text()
     assert "if (!tile_indices_cpu.empty())" in implementation.read_text()
+    assert "if (tile_num == 0)\n\t\treturn num_rendered;" in implementation.read_text()
+    assert "if (tile_num == 0) return;\n\tGeometryState geomState" in implementation.read_text()
     assert '"[RTG_NATIVE_STAGE] " << __FILE__ << ":" << __LINE__' in auxiliary.read_text()

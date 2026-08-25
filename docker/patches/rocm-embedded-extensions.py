@@ -133,6 +133,17 @@ def patch_file(path: Path) -> None:
             "if (!tile_indices_cpu.empty())\n"
             "\t\tCHECK_CUDA(cudaMemcpy(tile_indices, tile_indices_cpu.data(), tile_indices_cpu.size() * sizeof(int), cudaMemcpyHostToDevice), debug);",
         )
+        text = text.replace(
+            "tile_num = tile_indices_cpu.size();",
+            "tile_num = tile_indices_cpu.size();\n"
+            "\tif (tile_num == 0)\n"
+            "\t\treturn num_rendered;",
+        )
+        text = text.replace(
+            "{\n\tGeometryState geomState = GeometryState::fromChunk(geom_buffer, P);",
+            "{\n\tif (tile_num == 0) return;\n"
+            "\tGeometryState geomState = GeometryState::fromChunk(geom_buffer, P);",
+        )
     if path.name == "auxiliary.h" and "#define CHECK_CUDA(A, debug)" in text:
         lines = text.splitlines(keepends=True)
         macro_index = next(
