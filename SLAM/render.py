@@ -82,7 +82,7 @@ class Renderer:
             normal_threshold=self.renderer_normal_threshold,
             color_sigma=self.color_sigma,
             prefiltered=False,
-            debug=False,
+            debug=os.environ.get("RTG_DEBUG_SYNC") == "1",
             cx=viewpoint_camera.cx,
             cy=viewpoint_camera.cy,
             T_threshold=0.0001,
