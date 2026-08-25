@@ -133,6 +133,20 @@ def patch_file(path: Path) -> None:
             "if (!tile_indices_cpu.empty())\n"
             "\t\tCHECK_CUDA(cudaMemcpy(tile_indices, tile_indices_cpu.data(), tile_indices_cpu.size() * sizeof(int), cudaMemcpyHostToDevice), debug);",
         )
+    if path.name == "auxiliary.h" and "#define CHECK_CUDA(A, debug)" in text:
+        lines = text.splitlines(keepends=True)
+        macro_index = next(
+            index for index, line in enumerate(lines)
+            if line.startswith("#define CHECK_CUDA(A, debug)")
+        )
+        action_index = macro_index + 1
+        if lines[action_index].lstrip().startswith("A;"):
+            indent = lines[action_index][:-len(lines[action_index].lstrip())]
+            lines.insert(
+                action_index,
+                f'{indent}if (debug) std::cerr << "[RTG_NATIVE_STAGE] " << __FILE__ << ":" << __LINE__ << std::endl; \\\n',
+            )
+            text = "".join(lines)
     if path.name == "rasterize_points.cu":
         text = text.replace(
             "torch::Tensor out_hit_depth = torch::full({1, H, W}, 0, int_opts);",

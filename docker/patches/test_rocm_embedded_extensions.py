@@ -22,6 +22,12 @@ def test_empty_flat_raster_skips_zero_grid_and_marks_no_hit(tmp_path: Path) -> N
     implementation.write_text(
         "CHECK_CUDA(cudaMemcpy(tile_indices, tile_indices_cpu.data(), tile_indices_cpu.size() * sizeof(int), cudaMemcpyHostToDevice), debug);\n"
     )
+    auxiliary = rasterizer / "auxiliary.h"
+    auxiliary.write_text(
+        "#define CHECK_CUDA(A, debug) \\\n"
+        "\tA; \\\n"
+        "\tif (debug) {}\n"
+    )
 
     subprocess.run([sys.executable, source_root / "rocm-embedded-extensions.py"], cwd=tmp_path, check=True)
 
@@ -29,3 +35,4 @@ def test_empty_flat_raster_skips_zero_grid_and_marks_no_hit(tmp_path: Path) -> N
     assert "out_hit_depth = torch::full({1, H, W}, -1, int_opts);" in points.read_text()
     assert "out_hit_color = torch::full({1, H, W}, -1, int_opts);" in points.read_text()
     assert "if (!tile_indices_cpu.empty())" in implementation.read_text()
+    assert '"[RTG_NATIVE_STAGE] " << __FILE__ << ":" << __LINE__' in auxiliary.read_text()
