@@ -130,11 +130,11 @@ def patch_file(path: Path) -> None:
     if path.name == "rasterizer_impl.cu":
         text = text.replace(
             "\tint num_rendered;",
-            "\tint num_rendered;\n\tint *num_rendered_host;",
+            "\tint num_rendered;\n\tstatic thread_local int *num_rendered_host = nullptr;",
         )
         text = text.replace(
             "int num_rendered;\nCHECK_CUDA(cudaMemcpy(&num_rendered,",
-            "int num_rendered;\nint *num_rendered_host;\nCHECK_CUDA(cudaMemcpy(&num_rendered,",
+            "int num_rendered;\nstatic thread_local int *num_rendered_host = nullptr;\nCHECK_CUDA(cudaMemcpy(&num_rendered,",
         )
         for offsets in ("point_offsets", "geomState.point_offsets"):
             copy_line = (
@@ -143,10 +143,10 @@ def patch_file(path: Path) -> None:
             )
             text = text.replace(
                 copy_line,
-                "CHECK_CUDA(cudaMallocHost((void **)&num_rendered_host, sizeof(int)), debug);\n"
+                "if (num_rendered_host == nullptr)\n"
+                "\t\tCHECK_CUDA(cudaMallocHost((void **)&num_rendered_host, sizeof(int)), debug);\n"
                 f"\tCHECK_CUDA(cudaMemcpy(num_rendered_host, {offsets} + P - 1, sizeof(int), cudaMemcpyDeviceToHost), debug);\n"
                 "\tnum_rendered = *num_rendered_host;\n"
-                "\tCHECK_CUDA(cudaFreeHost(num_rendered_host), debug);\n"
                 "\tif (num_rendered == 0)\n"
                 "\t{\n"
                 "\t\ttile_num = 0;\n"
@@ -194,13 +194,20 @@ def patch_file(path: Path) -> None:
         )
         text = text.replace(
             "uint2 ranges_cpu[tile_grid.x * tile_grid.y];",
-            "uint2 *ranges_cpu;\n"
-            "\tCHECK_CUDA(cudaMallocHost((void **)&ranges_cpu, tile_grid.x * tile_grid.y * sizeof(uint2)), debug);",
+            "static thread_local uint2 *ranges_cpu = nullptr;\n"
+            "\tstatic thread_local size_t ranges_cpu_capacity = 0;\n"
+            "\tconst size_t ranges_bytes = tile_grid.x * tile_grid.y * sizeof(uint2);\n"
+            "\tif (ranges_cpu_capacity < ranges_bytes)\n"
+            "\t{\n"
+            "\t\tuint2 *larger_ranges_cpu;\n"
+            "\t\tCHECK_CUDA(cudaMallocHost((void **)&larger_ranges_cpu, ranges_bytes), debug);\n"
+            "\t\tranges_cpu = larger_ranges_cpu;\n"
+            "\t\tranges_cpu_capacity = ranges_bytes;\n"
+            "\t}",
         )
         text = text.replace(
             "CHECK_CUDA(cudaMemcpy(tile_indices, tile_indices_cpu.data(), tile_indices_cpu.size() * sizeof(int), cudaMemcpyHostToDevice), debug);",
-            "CHECK_CUDA(cudaFreeHost(ranges_cpu), debug);\n"
-            "\tif (!tile_indices_cpu.empty())\n"
+            "if (!tile_indices_cpu.empty())\n"
             "\t\tCHECK_CUDA(cudaMemcpy(tile_indices, tile_indices_cpu.data(), tile_indices_cpu.size() * sizeof(int), cudaMemcpyHostToDevice), debug);",
         )
         text = text.replace(
