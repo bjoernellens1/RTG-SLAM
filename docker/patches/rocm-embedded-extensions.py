@@ -112,6 +112,27 @@ def patch_file(path: Path) -> None:
         "dim3 grid(tile_num, 1, 1);",
     )
 
+    # RTG uses a compact list of tiles that contain at least one projected
+    # Gaussian. A camera can legitimately see none of the previous map, in
+    # which case launching the flat rasterizer with grid.x == 0 is invalid on
+    # HIP. The caller has already allocated the empty render outputs, so skip
+    # only that zero-work launch. Mark its hit maps invalid so the mapper does
+    # not mistake Gaussian zero for a rendered point.
+    if path.name in {"forward.cu", "backward.cu"}:
+        text = text.replace(
+            "{\n\tdim3 grid(tile_num, 1, 1);",
+            "{\n\tif (tile_num == 0) return;\n\tdim3 grid(tile_num, 1, 1);",
+        )
+    if path.name == "rasterize_points.cu":
+        text = text.replace(
+            "torch::Tensor out_hit_depth = torch::full({1, H, W}, 0, int_opts);",
+            "torch::Tensor out_hit_depth = torch::full({1, H, W}, -1, int_opts);",
+        )
+        text = text.replace(
+            "torch::Tensor out_hit_color = torch::full({1, H, W}, 0, int_opts);",
+            "torch::Tensor out_hit_color = torch::full({1, H, W}, -1, int_opts);",
+        )
+
     # simple-knn's simple_knn.cu uses FLT_MAX without including <cfloat>
     # itself, relying on it arriving transitively through
     # #include "cuda_runtime.h". Under CUDA that pulls it in; under HIP,
