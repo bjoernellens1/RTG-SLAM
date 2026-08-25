@@ -129,6 +129,16 @@ def patch_file(path: Path) -> None:
     # the zero-tile launch guard above takes effect.
     if path.name == "rasterizer_impl.cu":
         text = text.replace(
+            "\tobtain(chunk, geom.tiles_touched, P, 128);\n"
+            "\tcub::DeviceScan::InclusiveSum(nullptr, geom.scan_size, geom.tiles_touched, geom.tiles_touched, P);\n"
+            "\tobtain(chunk, geom.scanning_space, geom.scan_size, 128);\n"
+            "\tobtain(chunk, geom.point_offsets, P, 128);",
+            "\tobtain(chunk, geom.tiles_touched, P, 128);\n"
+            "\tobtain(chunk, geom.point_offsets, P, 128);\n"
+            "\tcub::DeviceScan::InclusiveSum(nullptr, geom.scan_size, geom.tiles_touched, geom.point_offsets, P);\n"
+            "\tobtain(chunk, geom.scanning_space, geom.scan_size, 128);",
+        )
+        text = text.replace(
             "\tint num_rendered;",
             "\tint num_rendered;\n\tstatic thread_local int *num_rendered_host = nullptr;",
         )

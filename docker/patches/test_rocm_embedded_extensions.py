@@ -64,3 +64,25 @@ def test_empty_flat_raster_skips_zero_grid_and_marks_no_hit(tmp_path: Path) -> N
     assert "cudaFreeHost" not in implementation.read_text()
     assert "point_list_keys, ranges, tile_grid.x * tile_grid.y, debug);" in implementation.read_text()
     assert '"[RTG_NATIVE_STAGE] " << __FILE__ << ":" << __LINE__' in auxiliary.read_text()
+
+
+def test_scan_workspace_query_matches_out_of_place_execution(tmp_path: Path) -> None:
+    source_root = Path(__file__).parent
+    rasterizer = tmp_path / "diff-gaussian-rasterizer-depth"
+    rasterizer.mkdir()
+    implementation = rasterizer / "rasterizer_impl.cu"
+    implementation.write_text(
+        "\tobtain(chunk, geom.tiles_touched, P, 128);\n"
+        "\tcub::DeviceScan::InclusiveSum(nullptr, geom.scan_size, geom.tiles_touched, geom.tiles_touched, P);\n"
+        "\tobtain(chunk, geom.scanning_space, geom.scan_size, 128);\n"
+        "\tobtain(chunk, geom.point_offsets, P, 128);\n"
+    )
+
+    subprocess.run([sys.executable, source_root / "rocm-embedded-extensions.py"], cwd=tmp_path, check=True)
+
+    assert implementation.read_text() == (
+        "\tobtain(chunk, geom.tiles_touched, P, 128);\n"
+        "\tobtain(chunk, geom.point_offsets, P, 128);\n"
+        "\tcub::DeviceScan::InclusiveSum(nullptr, geom.scan_size, geom.tiles_touched, geom.point_offsets, P);\n"
+        "\tobtain(chunk, geom.scanning_space, geom.scan_size, 128);\n"
+    )
