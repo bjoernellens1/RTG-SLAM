@@ -157,10 +157,14 @@ class Mapping(object):
         gaussian_update_iter = self.gaussian_update_iter
         render_masks = []
         tile_masks = []
+        tile_mask_has_work = []
         for frame in self.processed_frames:
             render_mask, tile_mask, render_ratio = self.evaluate_render_range(frame)
             render_masks.append(render_mask)
             tile_masks.append(tile_mask)
+            tile_mask_has_work.append(
+                tile_mask is None or tile_mask.count_nonzero().item() > 0
+            )
             if self.verbose:
                 tile_raito = 1
                 if tile_mask is not None:
@@ -178,6 +182,10 @@ class Mapping(object):
                 random_index = random.randint(0, len(self.processed_frames) - 1)
                 if iter > gaussian_update_iter / 2:
                     random_index = -1
+                if not tile_mask_has_work[random_index]:
+                    pbar.set_postfix({"loss": "0.00000"})
+                    pbar.update(1)
+                    continue
                 opt_frame = self.processed_frames[random_index]
                 opt_frame_map = self.processed_map[random_index]
                 opt_render_mask = render_masks[random_index]
