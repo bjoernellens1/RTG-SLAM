@@ -461,13 +461,19 @@ class Mapping(object):
             + update_args.ssim_weight * ssim_loss
         )
         loss = total_loss
+        update_loss = loss + attach_loss
         self.optimizer.zero_grad(set_to_none=True)
-        (loss + attach_loss).backward()
-        self.optimizer.step()
+        # With no rendered-valid pixels and no attached points there is no
+        # differentiable mapping objective.  Leave the map unchanged for this
+        # iteration; calling backward on a constant zero is an error.
+        if update_loss.requires_grad:
+            update_loss.backward()
+            self.optimizer.step()
 
         # update confidence by grad
-        grad_mask = (pointcloud._features_dc.grad.abs() != 0).any(dim=-1)
-        pointcloud._confidence[grad_mask] += 1
+        if pointcloud._features_dc.grad is not None:
+            grad_mask = (pointcloud._features_dc.grad.abs() != 0).any(dim=-1)
+            pointcloud._confidence[grad_mask] += 1
 
         # report train loss
         report_losses = {

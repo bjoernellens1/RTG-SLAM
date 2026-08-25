@@ -8,3 +8,5 @@ def test_mapper_guards_empty_render_reductions_and_clears_gradients():
     assert "valid_depth.numel() > 0" in source
     assert "valid_normal.numel() > 0" in source
     assert "self.optimizer.zero_grad(set_to_none=True)" in source
+    assert "if update_loss.requires_grad:" in source
+    assert "if pointcloud._features_dc.grad is not None:" in source
