@@ -1,5 +1,6 @@
 import numpy as np
 import math
+import os
 import torch
 
 from scene.cameras import Camera
@@ -118,6 +119,9 @@ class Renderer:
             normal_w=normal,
             tile_mask=tile_mask,
         )
+        if os.environ.get("RTG_DEBUG_SYNC") == "1":
+            torch.cuda.synchronize()
+            print("[RTG_DEBUG_SYNC] rasterizer-return")
 
         rendered_image = render_results[0]
         rendered_depth = render_results[1]
@@ -131,6 +135,9 @@ class Renderer:
         render_normal[:, depth_index_map[0] > -1] = normal[
             depth_index_map[depth_index_map > -1].long()
         ].permute(1, 0)
+        if os.environ.get("RTG_DEBUG_SYNC") == "1":
+            torch.cuda.synchronize()
+            print("[RTG_DEBUG_SYNC] normal-index")
         
         results = {
             "render": rendered_image,
