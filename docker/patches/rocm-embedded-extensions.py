@@ -128,6 +128,14 @@ def patch_file(path: Path) -> None:
     # is empty for a valid no-visible-Gaussian view, so avoid that copy before
     # the zero-tile launch guard above takes effect.
     if path.name == "rasterizer_impl.cu":
+        text = text.replace(
+            "\tint num_rendered;",
+            "\tint num_rendered;\n\tint *num_rendered_host;",
+        )
+        text = text.replace(
+            "int num_rendered;\nCHECK_CUDA(cudaMemcpy(&num_rendered,",
+            "int num_rendered;\nint *num_rendered_host;\nCHECK_CUDA(cudaMemcpy(&num_rendered,",
+        )
         for offsets in ("point_offsets", "geomState.point_offsets"):
             copy_line = (
                 f"CHECK_CUDA(cudaMemcpy(&num_rendered, {offsets} + P - 1, sizeof(int), "
@@ -135,7 +143,10 @@ def patch_file(path: Path) -> None:
             )
             text = text.replace(
                 copy_line,
-                copy_line + "\n"
+                "CHECK_CUDA(cudaMallocHost((void **)&num_rendered_host, sizeof(int)), debug);\n"
+                f"\tCHECK_CUDA(cudaMemcpy(num_rendered_host, {offsets} + P - 1, sizeof(int), cudaMemcpyDeviceToHost), debug);\n"
+                "\tnum_rendered = *num_rendered_host;\n"
+                "\tCHECK_CUDA(cudaFreeHost(num_rendered_host), debug);\n"
                 "\tif (num_rendered == 0)\n"
                 "\t{\n"
                 "\t\ttile_num = 0;\n"
@@ -182,8 +193,14 @@ def patch_file(path: Path) -> None:
             "\t\t\ttile_grid.x * tile_grid.y,\n\t\t\tdebug);",
         )
         text = text.replace(
+            "uint2 ranges_cpu[tile_grid.x * tile_grid.y];",
+            "uint2 *ranges_cpu;\n"
+            "\tCHECK_CUDA(cudaMallocHost((void **)&ranges_cpu, tile_grid.x * tile_grid.y * sizeof(uint2)), debug);",
+        )
+        text = text.replace(
             "CHECK_CUDA(cudaMemcpy(tile_indices, tile_indices_cpu.data(), tile_indices_cpu.size() * sizeof(int), cudaMemcpyHostToDevice), debug);",
-            "if (!tile_indices_cpu.empty())\n"
+            "CHECK_CUDA(cudaFreeHost(ranges_cpu), debug);\n"
+            "\tif (!tile_indices_cpu.empty())\n"
             "\t\tCHECK_CUDA(cudaMemcpy(tile_indices, tile_indices_cpu.data(), tile_indices_cpu.size() * sizeof(int), cudaMemcpyHostToDevice), debug);",
         )
         text = text.replace(

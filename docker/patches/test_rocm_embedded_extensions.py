@@ -28,6 +28,9 @@ def test_empty_flat_raster_skips_zero_grid_and_marks_no_hit(tmp_path: Path) -> N
         "int num_rendered;\n"
         "CHECK_CUDA(cudaMemcpy(&num_rendered, point_offsets + P - 1, sizeof(int), cudaMemcpyDeviceToHost), debug);\n"
         "identifyTileRanges<<<1, 1>>>(num_rendered, point_list_keys, ranges);\n"
+        "uint2 ranges_cpu[tile_grid.x * tile_grid.y];\n"
+        "CHECK_CUDA(cudaMemcpy(ranges_cpu, ranges, tile_grid.x * tile_grid.y * sizeof(uint2), cudaMemcpyDeviceToHost), debug);\n"
+        "std::vector<int> tile_indices_cpu;\n"
         "CHECK_CUDA(cudaMemcpy(tile_indices, tile_indices_cpu.data(), tile_indices_cpu.size() * sizeof(int), cudaMemcpyHostToDevice), debug);\n"
         "tile_num = tile_indices_cpu.size();\n"
         "void backward()\n{\n"
@@ -54,5 +57,9 @@ def test_empty_flat_raster_skips_zero_grid_and_marks_no_hit(tmp_path: Path) -> N
     assert "if (currtile >= tile_count)" in implementation.read_text()
     assert '"[RTG_BINNING] P=" << P << " num_rendered=" << num_rendered' in implementation.read_text()
     assert "if (num_rendered == 0)\n\t{\n\t\ttile_num = 0;\n\t\treturn 0;\n\t}" in implementation.read_text()
+    assert "cudaMallocHost((void **)&num_rendered_host, sizeof(int))" in implementation.read_text()
+    assert "cudaMallocHost((void **)&ranges_cpu, tile_grid.x * tile_grid.y * sizeof(uint2))" in implementation.read_text()
+    assert "cudaFreeHost(num_rendered_host)" in implementation.read_text()
+    assert "cudaFreeHost(ranges_cpu)" in implementation.read_text()
     assert "point_list_keys, ranges, tile_grid.x * tile_grid.y, debug);" in implementation.read_text()
     assert '"[RTG_NATIVE_STAGE] " << __FILE__ << ":" << __LINE__' in auxiliary.read_text()
