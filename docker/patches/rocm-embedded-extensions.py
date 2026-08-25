@@ -136,6 +136,11 @@ def patch_file(path: Path) -> None:
             text = text.replace(
                 copy_line,
                 copy_line + "\n"
+                "\tif (num_rendered == 0)\n"
+                "\t{\n"
+                "\t\ttile_num = 0;\n"
+                "\t\treturn 0;\n"
+                "\t}\n"
                 "\tif (debug) std::cerr << \"[RTG_BINNING] P=\" << P << \" num_rendered=\" << num_rendered "
                 "<< \" tiles=\" << tile_grid.x * tile_grid.y << std::endl;",
             )
