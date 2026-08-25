@@ -418,7 +418,16 @@ class Mapping(object):
         # render_mask include depth == 0
         if self.dataset_type == "Scannetpp":
             render_mask = render_mask & (image_input["depth_map"] > 0).squeeze()
-        color_loss = l1_loss(image[render_mask], image_input["color_map"][render_mask])
+        # A view may have no valid rendered pixels immediately after adding a
+        # frame.  ``mean`` on that empty selection is NaN, which poisons every
+        # later update (and eventually faults the HIP queue).
+        color_pixels = image[render_mask]
+        target_color_pixels = image_input["color_map"][render_mask]
+        color_loss = (
+            l1_loss(color_pixels, target_color_pixels)
+            if color_pixels.numel() > 0
+            else devF(torch.tensor(0.0))
+        )
 
         if depth is not None and update_args.depth_weight > 0:
             depth_error = depth - image_input["depth_map"]
@@ -428,7 +437,9 @@ class Mapping(object):
                 & (depth_error < self.add_depth_thres).squeeze()
                 & render_mask
             )
-            depth_loss = torch.abs(depth_error[valid_depth_mask]).mean()
+            valid_depth = torch.abs(depth_error[valid_depth_mask])
+            if valid_depth.numel() > 0:
+                depth_loss = valid_depth.mean()
 
         if normal is not None and update_args.normal_weight > 0:
             cos_dist = 1 - F.cosine_similarity(
@@ -439,7 +450,9 @@ class Mapping(object):
                 & (depth_index != -1).squeeze()
                 & (~(image_input["normal_map"] == 0).all(dim=-1))
             )
-            normal_loss = cos_dist[valid_normal_mask].mean()
+            valid_normal = cos_dist[valid_normal_mask]
+            if valid_normal.numel() > 0:
+                normal_loss = valid_normal.mean()
 
         total_loss = (
             update_args.depth_weight * depth_loss
@@ -448,6 +461,7 @@ class Mapping(object):
             + update_args.ssim_weight * ssim_loss
         )
         loss = total_loss
+        self.optimizer.zero_grad(set_to_none=True)
         (loss + attach_loss).backward()
         self.optimizer.step()
 
