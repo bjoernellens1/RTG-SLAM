@@ -123,6 +123,16 @@ def patch_file(path: Path) -> None:
             "{\n\tdim3 grid(tile_num, 1, 1);",
             "{\n\tif (tile_num == 0) return;\n\tdim3 grid(tile_num, 1, 1);",
         )
+    # HIP does not reliably accept a zero-byte cudaMemcpy whose host pointer
+    # is ``std::vector::data()`` from an empty vector.  The compact tile list
+    # is empty for a valid no-visible-Gaussian view, so avoid that copy before
+    # the zero-tile launch guard above takes effect.
+    if path.name == "rasterizer_impl.cu":
+        text = text.replace(
+            "CHECK_CUDA(cudaMemcpy(tile_indices, tile_indices_cpu.data(), tile_indices_cpu.size() * sizeof(int), cudaMemcpyHostToDevice), debug);",
+            "if (!tile_indices_cpu.empty())\n"
+            "\t\tCHECK_CUDA(cudaMemcpy(tile_indices, tile_indices_cpu.data(), tile_indices_cpu.size() * sizeof(int), cudaMemcpyHostToDevice), debug);",
+        )
     if path.name == "rasterize_points.cu":
         text = text.replace(
             "torch::Tensor out_hit_depth = torch::full({1, H, W}, 0, int_opts);",
