@@ -127,9 +127,13 @@ class Mapping(object):
                         select_keyframe_num=self.global_keyframe_num,
                     )
                 self.gaussians_delete(unstable=False)
+                _debug_sync("stable-delete")
         self.gaussians_fix()
+        _debug_sync("gaussians-fix")
         self.error_gaussians_remove()
+        _debug_sync("error-gaussians-remove")
         self.gaussians_delete()
+        _debug_sync("unstable-delete")
         move_to_cpu(frame)
 
     def gaussians_add(self, frame):
