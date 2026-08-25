@@ -10,3 +10,5 @@ def test_mapper_guards_empty_render_reductions_and_clears_gradients():
     assert "self.optimizer.zero_grad(set_to_none=True)" in source
     assert "if update_loss.requires_grad:" in source
     assert "if pointcloud._features_dc.grad is not None:" in source
+    assert 'os.environ.get("RTG_DEBUG_SYNC") == "1"' in source
+    assert '"local-loss-update"' in source
