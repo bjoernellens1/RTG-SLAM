@@ -16,13 +16,6 @@ from cuda_utils._C import accumulate_gaussian_error
 from utils.monitor import Recorder
 
 
-def _debug_sync(label):
-    """Expose an asynchronous ROCm fault at the preceding native operation."""
-    if os.environ.get("RTG_DEBUG_SYNC") == "1":
-        torch.cuda.synchronize()
-        print(f"[RTG_DEBUG_SYNC] {label}")
-
-
 class Mapping(object):
     def __init__(self, args, recorder=None) -> None:
         self.temp_pointcloud = GaussianPointCloud(args)
@@ -127,13 +120,9 @@ class Mapping(object):
                         select_keyframe_num=self.global_keyframe_num,
                     )
                 self.gaussians_delete(unstable=False)
-                _debug_sync("stable-delete")
         self.gaussians_fix()
-        _debug_sync("gaussians-fix")
         self.error_gaussians_remove()
-        _debug_sync("error-gaussians-remove")
         self.gaussians_delete()
-        _debug_sync("unstable-delete")
         move_to_cpu(frame)
 
     def gaussians_add(self, frame):
@@ -199,7 +188,6 @@ class Mapping(object):
                     self.global_params,
                     tile_mask=opt_tile_mask,
                 )
-                _debug_sync("local-render")
                 image_input = {
                     "color_map": devF(opt_frame_map["color_map"]),
                     "depth_map": devF(opt_frame_map["depth_map"]),
@@ -213,7 +201,6 @@ class Mapping(object):
                     render_mask=opt_render_mask,
                     unstable=True,
                 )
-                _debug_sync("local-loss-update")
                 pbar.set_postfix({"loss": "{0:1.5f}".format(loss)})
                 pbar.update(1)
 
@@ -221,7 +208,6 @@ class Mapping(object):
         self.iter = 0
 
         self.history_merge(history_stat, self.history_merge_max_weight)
-        _debug_sync("local-history-merge")
 
     def history_merge(self, history_stat, max_weight=0.5):
         if max_weight <= 0:
