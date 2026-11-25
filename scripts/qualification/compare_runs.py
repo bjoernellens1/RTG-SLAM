@@ -16,6 +16,10 @@ def check(cond, msg):
 def load_run(path):
     m = json.loads((path/"run.json").read_text())
     check(m["status"] == "completed", "run did not complete")
+    required = {"timing.json", "smoke.npz", "smoke.log", "slam.log", "map/save_traj/pose_es.npy", "map/save_traj/pose_gt.npy"}
+    if m["lane"] == "slam":
+        required.add("orb.log")
+    check(set(m["files"]) == required, "missing or unexpected evidence files")
     for name, expected in m["files"].items():
         h = hashlib.sha256()
         with (path/name).open("rb") as f:
@@ -32,6 +36,7 @@ def load_run(path):
     check(es.shape == gt.shape == (n,4,4) and n >= 10, "pose shape mismatch")
     check(np.isfinite(es).all() and np.isfinite(gt).all(), "invalid pose")
     check(n == m["frames_processed"], "frame count mismatch")
+    check(t["finalized_s"] >= t["online_s"], "non-monotonic run timing")
     for k in ("online_s", "finalized_s"):
         check(np.isfinite(t[k]) and t[k]>0, "invalid timing "+k)
     return m,t,es,gt

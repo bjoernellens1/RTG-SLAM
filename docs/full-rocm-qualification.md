@@ -3,7 +3,12 @@
 **Status:** implementation candidate, not runtime-qualified. No new GPU results are claimed.
 The previous mapper-only image remains the default target. Full adds the original
 pinned CPU ORB-SLAM2 backend and Boost.Python binding on both vendor stacks.
-The GPU algorithm is not replaced. CI must establish the build and runtime.
+The GPU algorithm is not replaced. The same camera-pose bookkeeping correction
+is applied on both backends: Camera.update recomputes camera_center from the
+updated transform rather than retaining the initial ground-truth camera center.
+This prevents pose-information leakage into view-dependent rendering. Treat
+this as a disclosed shared correctness fix, not an unchanged upstream result.
+CI must establish the build and runtime.
 
 ## Build (on the respective hosts)
 ```bash

@@ -150,6 +150,8 @@ def main():
     gaussian_map.update_poses(new_poses)
     gaussian_map.global_optimization(optimization_params, is_end=True)
     finalized_s = clock()-loop_start
+    peak_allocated = torch.cuda.max_memory_allocated() if qualification else None
+    peak_reserved = torch.cuda.max_memory_reserved() if qualification else None
     eval_frame(
         gaussian_map,
         gaussian_map.keyframe_list[-1],
@@ -186,8 +188,8 @@ def main():
                       orb_active=gaussian_tracker.orb_backend is not None,
                       orb_timestamps=orb_stamps, use_gt_pose=bool(args.use_gt_pose),
                       frames=samples, heldout=heldout, online_s=online_s, finalized_s=finalized_s,
-                      peak_allocated_bytes=torch.cuda.max_memory_allocated(),
-                      peak_reserved_bytes=torch.cuda.max_memory_reserved())
+                      peak_allocated_bytes=peak_allocated,
+                      peak_reserved_bytes=peak_reserved)
         with open(qualification, 'w') as fp:
             json.dump(result, fp, indent=2, allow_nan=False)
     gaussian_tracker.save_traj(args.save_path)

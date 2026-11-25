@@ -136,6 +136,9 @@ class Camera(nn.Module):
             )
         ).squeeze(0)
 
+        # Rendering must use the estimated pose, not the initial (ground-truth) camera center.
+        self.camera_center = self.world_view_transform.inverse()[3, :3]
+
     def get_w2c(self):
         return self.world_view_transform.transpose(0, 1)
 

@@ -3,7 +3,7 @@ name: Publish qualified RTG-SLAM images
 on:
   push:
     branches: [rocm-7.2]
-    paths: ["docker/**", "scripts/**", ".github/workflows/publish-images.yml"]
+    paths: ["docker/**", "scripts/**", "slam.py", "SLAM/**", "scene/**", "utils/**", ".github/workflows/publish-images.yml"]
   pull_request:
     branches: [main, rocm-7.2]
     paths: ["docker/**", "scripts/**", ".github/workflows/publish-images.yml"]
@@ -23,6 +23,41 @@ env:
   AMD_PORT_AUDIT_SHA256: c77e18af1ccaecd3d0803be300b6c7091fe847d3db72a181fc03f2613c9498b5
 
 jobs:
+  qualification-unit-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event_name == 'schedule' && 'rocm-7.2' || github.ref }}
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+      - run: pip install 'numpy<2' pyyaml pytest
+      - run: python -m compileall -q scripts/qualification scripts/smoke slam.py SLAM scene utils
+      - run: bash -n docker/build-orb-container.sh
+      - run: python -m pytest -q scripts/qualification/test_compare_runs.py
+
+  build-rocm-full-candidate:
+    # Candidate image only. No qualification tag is published on a PR.
+    if: github.event_name == 'pull_request'
+    needs: qualification-unit-tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 360
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - name: Build full ROCm candidate with original ORB-SLAM2 binding
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: docker/Dockerfile.rocm
+          target: full
+          push: false
+          build-args: |
+            ROCM_ARCH=gfx1151
+          cache-from: type=gha,scope=rtg-slam-rocm-full-gfx1151
+          cache-to: type=gha,scope=rtg-slam-rocm-full-gfx1151,mode=max
+
   build-rocm:
     runs-on: ubuntu-latest
     timeout-minutes: 360
