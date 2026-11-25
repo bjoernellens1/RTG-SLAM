@@ -31,6 +31,16 @@ qualification receipts where they preserve each method's implementation.
   selected Python development include path and verify header and ABI
   discovery with a compile probe before rebuilding. Public release requires
   physical GPU evidence.
+- Draft PR #2 revision `9941902c9b2b32c9a8b70f1bbf44be26b6759ebf`
+  built the full ROCm image on the workstation, including the original
+  ORB-SLAM2 bindings. Image digest
+  `sha256:bc339f72c8afdfb18fe2c807eb14e5d5bbab5b7701c8ab28bef3cc4bdf2c7e5c`
+  ran the Q0 probes on physical gfx1151 and exported rasterization, KNN,
+  and accumulation tensors. Both Q1 lanes stopped on TUM fr1/desk frame 1.
+  The mapper's temporary-point filter calls `knn_points`, and the image
+  lacks PyTorch3D. Restore that GPU dependency and repeat both lanes.
+  CUDA build, paired numerical equivalence, and completed mapping remain
+  release gates.
 
 [ROCm branch](https://github.com/bjoernellens1/RTG-SLAM/tree/rocm-7.2) ·
 [Draft PR #2](https://github.com/bjoernellens1/RTG-SLAM/pull/2) ·
