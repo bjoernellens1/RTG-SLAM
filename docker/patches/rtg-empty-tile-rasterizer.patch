@@ -1,0 +1,45 @@
+diff --git a/diff-gaussian-rasterizer-depth/cuda_rasterizer/rasterizer_impl.cu b/diff-gaussian-rasterizer-depth/cuda_rasterizer/rasterizer_impl.cu
+index e990009..d307107 100755
+--- a/diff-gaussian-rasterizer-depth/cuda_rasterizer/rasterizer_impl.cu
++++ b/diff-gaussian-rasterizer-depth/cuda_rasterizer/rasterizer_impl.cu
+@@ -303,4 +303,9 @@ int CudaRasterizer::Rasterizer::forward(
+ 	int num_rendered;
+ 	CHECK_CUDA(cudaMemcpy(&num_rendered, geomState.point_offsets + P - 1, sizeof(int), cudaMemcpyDeviceToHost), debug);
++	if (num_rendered == 0)
++	{
++		tile_num = 0;
++		return 0;
++	}
+
+ 	size_t binning_chunk_size = required<BinningState>(num_rendered);
+@@ -359,6 +364,8 @@ int CudaRasterizer::Rasterizer::forward(
+ 		}
+ 	}
+-	CHECK_CUDA(cudaMemcpy(tile_indices, tile_indices_cpu.data(), tile_indices_cpu.size() * sizeof(int), cudaMemcpyHostToDevice), debug);
+ 	tile_num = tile_indices_cpu.size();
++	if (tile_num == 0)
++		return num_rendered;
++	CHECK_CUDA(cudaMemcpy(tile_indices, tile_indices_cpu.data(), tile_num * sizeof(int), cudaMemcpyHostToDevice), debug);
+ 	// printf("num rendered: %d, render_tile: %d\n", num_rendered, tile_num);
+ 	// Let each tile blend its range of Gaussians independently in parallel
+diff --git a/diff-gaussian-rasterizer-depth/rasterize_points.cu b/diff-gaussian-rasterizer-depth/rasterize_points.cu
+index f4b8bd5..1296248 100755
+--- a/diff-gaussian-rasterizer-depth/rasterize_points.cu
++++ b/diff-gaussian-rasterizer-depth/rasterize_points.cu
+@@ -147,4 +147,9 @@ RasterizeGaussiansCUDA(
+ 			debug);
+ 	}
++	if (tile_num == 0)
++	{
++		out_hit_color.fill_(-1);
++		out_hit_depth.fill_(-1);
++	}
+ 	return std::make_tuple(rendered, tile_num, out_color, out_depth,
+ 						   out_hit_color, out_hit_depth, out_hit_color_weight, out_hit_depth_weight,
+@@ -203,5 +208,5 @@ RasterizeGaussiansBackwardCUDA(
+ 	torch::Tensor dL_drotations = torch::zeros({P, 4}, means3D.options());
+
+-	if (P != 0)
++	if (P != 0 && tile_num > 0)
+ 	{
+ 		CudaRasterizer::Rasterizer::backward(P, degree, M, R,

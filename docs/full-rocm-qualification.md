@@ -75,3 +75,15 @@ wave32/wave64 hardware before widening public support claims.
 - Fixed-view time-to-quality across checkpoints, additional real sensor datasets,
   per-kernel stress tests, geometry metrics and repeated-run variability are
   follow-ups. No claim of numerical equivalence follows from compilation alone.
+
+## Empty render tiles
+
+A view with Gaussian inputs and no occupied render tiles used to launch a
+zero-sized GPU grid. The shared CUDA and ROCm patch skips empty dispatches and
+returns invalid hit indices and zero Gaussian gradients for empty views.
+
+The GPU smoke check covers a behind-camera Gaussian and a visible Gaussian with
+all tiles masked. Both cases passed on a Radeon 8060S (`gfx1151`, ROCm 7.2.4)
+and a GeForce RTX 4090 (CUDA 11.7.1). On each device, all 31 pre-existing smoke
+output arrays matched that device's pre-patch capture bit for bit. Across
+devices, the largest absolute floating-point difference was `3.82e-6`.

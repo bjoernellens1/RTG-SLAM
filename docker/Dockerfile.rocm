@@ -30,8 +30,10 @@ WORKDIR /opt
 RUN git clone https://github.com/CJAPPLE5/RTG-SLAM-cuda_utils.git rtg-cuda-utils \
     && git -C rtg-cuda-utils checkout --detach ${RTG_CUDA_UTILS_SHA} \
     && test "$(git -C rtg-cuda-utils rev-parse HEAD)" = "${RTG_CUDA_UTILS_SHA}"
+COPY docker/patches/rtg-empty-tile-rasterizer.patch /tmp/rtg-empty-tile-rasterizer.patch
 COPY docker/patches/rocm-embedded-extensions.py /tmp/rocm-embedded-extensions.py
 RUN cd /opt/rtg-cuda-utils \
+    && git apply /tmp/rtg-empty-tile-rasterizer.patch \
     && python /tmp/rocm-embedded-extensions.py \
     && python -m pip install --no-build-isolation ./cuda_utils \
     && python -m pip install --no-build-isolation ./diff-gaussian-rasterizer-depth \

@@ -60,7 +60,9 @@ RUN curl -fLsS --retry 3 "https://conda.anaconda.org/pytorch3d/linux-64/${RTG_PY
 WORKDIR /opt
 RUN git clone https://github.com/CJAPPLE5/RTG-SLAM-cuda_utils.git rtg-cuda-utils \
     && git -C rtg-cuda-utils checkout --detach ${RTG_CUDA_UTILS_SHA} \
-    && test "$(git -C rtg-cuda-utils rev-parse HEAD)" = "${RTG_CUDA_UTILS_SHA}" \
+    && test "$(git -C rtg-cuda-utils rev-parse HEAD)" = "${RTG_CUDA_UTILS_SHA}"
+COPY docker/patches/rtg-empty-tile-rasterizer.patch /tmp/rtg-empty-tile-rasterizer.patch
+RUN git -C /opt/rtg-cuda-utils apply /tmp/rtg-empty-tile-rasterizer.patch \
     && python -c 'from torch.utils.cpp_extension import CUDAExtension' \
     && python -m pip install --no-build-isolation /opt/rtg-cuda-utils/cuda_utils \
     && python -m pip install --no-build-isolation /opt/rtg-cuda-utils/diff-gaussian-rasterizer-depth \

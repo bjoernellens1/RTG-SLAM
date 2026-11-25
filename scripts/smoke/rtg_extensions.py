@@ -145,6 +145,34 @@ assert all(
 (outputs[0].sum() + outputs[1].sum() * 1e-3).backward()
 assert means3d.grad is not None and torch.isfinite(means3d.grad).all()
 
+# A nonempty Gaussian set can still produce an empty raster. Exercise both
+# culling before binning and a visible Gaussian with every tile disabled.
+for z, empty_tile_mask in ((-1.0, tile_mask), (1.0, torch.zeros_like(tile_mask))):
+    empty_means = torch.tensor([[0.0, 0.0, z]], device=device, requires_grad=True)
+    empty_opacity = opacities.detach().requires_grad_()
+    empty_colors = colors.detach().requires_grad_()
+    empty_scales = scales.detach().requires_grad_()
+    empty_rotations = rotations.detach().requires_grad_()
+    empty = rasterizer(
+        means3D=empty_means,
+        opacities=empty_opacity,
+        colors_precomp=empty_colors,
+        scales=empty_scales,
+        rotations=empty_rotations,
+        tile_mask=empty_tile_mask,
+    )
+    rgb, depth, hit_color, hit_depth, color_weight, depth_weight, transmission, radii = empty
+    for tensor in (rgb, depth, color_weight, depth_weight):
+        assert torch.equal(tensor, torch.zeros_like(tensor))
+    for indices in (hit_color, hit_depth):
+        assert torch.equal(indices, torch.full_like(indices, -1))
+    assert torch.equal(transmission, torch.ones_like(transmission))
+    if z < 0:
+        assert torch.equal(radii, torch.zeros_like(radii))
+    (rgb.sum() + depth.sum()).backward()
+    for tensor in (empty_means, empty_opacity, empty_colors, empty_scales, empty_rotations):
+        assert tensor.grad is not None and torch.equal(tensor.grad, torch.zeros_like(tensor))
+
 torch.cuda.synchronize()
 # Record actual tensors for cross-vendor numerical checks, not just finite flags.
 if os.environ.get("RTG_SMOKE_ARRAYS"):
