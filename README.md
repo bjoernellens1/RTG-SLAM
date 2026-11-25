@@ -1,3 +1,22 @@
+# RTG-SLAM ROCm (mapper-core preview)
+
+Community portability work for the original RTG-SLAM research implementation, targeting AMD ROCm 7.2.4. This is not an official AMD or upstream release.
+
+## AMD quickstart
+
+```bash
+git clone -b rocm-7.2 https://github.com/bjoernellens1/RTG-SLAM.git
+cd RTG-SLAM
+docker build -f docker/Dockerfile.rocm --build-arg ROCM_ARCH=gfx1201 -t rtg-slam-rocm .
+docker run --rm --device=/dev/kfd --device=/dev/dri --group-add video --ipc=host rtg-slam-rocm
+```
+
+Replace the architecture with the target GPU architecture. The image default command runs extension smoke tests, not a complete SLAM sequence. GPU access permissions may require host configuration.
+
+**Scope:** mapper-core portability with externally supplied camera poses; ORB frontend is not built in this image. Real-GPU qualification and CUDA numerical equivalence must be established separately. See [port notes](docs/rocm-port.md) and [Dockerfile](docker/Dockerfile.rocm). Original authors, citation, licensing and CUDA instructions are retained below.
+
+---
+
 # RTG-SLAM: Real-time 3D Reconstruction at Scale Using Gaussian Splatting
 
 Zhexi Peng, Tianjia Shao, Liu Yong, Jingke Zhou, Yin Yang, Jingdong Wang, Kun Zhou
