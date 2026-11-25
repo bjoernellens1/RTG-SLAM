@@ -62,6 +62,8 @@ def main():
             torch.cuda.synchronize()
         return time.perf_counter()
     loop_start = clock()
+    if qualification:
+        torch.cuda.reset_peak_memory_stats()
     # start SLAM
     for frame_id, frame_info in enumerate(dataset.scene_info.train_cameras):
         curr_frame = loadCam(
@@ -124,9 +126,13 @@ def main():
         move_to_cpu(curr_frame)
         torch.cuda.empty_cache()
         if qualification:
+            orb_ok = None
+            if gaussian_tracker.orb_backend is not None:
+                import orbslam2
+                orb_ok = gaussian_tracker.orb_backend.get_tracking_state() == orbslam2.TrackingState.OK
             samples.append(dict(frame=frame_id, timestamp=float(curr_frame.timestamp),
                 tracking_s=tracker_consume_time, mapping_s=mapper_consume_time,
-                elapsed_s=clock()-loop_start, icp_success=bool(tracking_success),
+                elapsed_s=clock()-loop_start, icp_success=bool(tracking_success), orb_tracking_ok=None if orb_ok is None else bool(orb_ok),
                 observed_view_quality=quality))
     online_s = clock()-loop_start
     print("\n========== main loop finish ==========\n")
@@ -143,6 +149,7 @@ def main():
     new_poses = gaussian_tracker.get_new_poses()
     gaussian_map.update_poses(new_poses)
     gaussian_map.global_optimization(optimization_params, is_end=True)
+    finalized_s = clock()-loop_start
     eval_frame(
         gaussian_map,
         gaussian_map.keyframe_list[-1],
@@ -159,13 +166,26 @@ def main():
         if gaussian_tracker.orb_backend is not None:
             _, orb_stamps = convert_poses(gaussian_tracker.orb_backend.get_trajectory_points())
             orb_stamps = [float(v) for v in orb_stamps]
+        # Evaluate a fixed set of withheld RGB-D views for mapper parity only.
+        heldout = []
+        if args.use_gt_pose:
+            for i, info in enumerate(dataset.scene_info.test_cameras):
+                cam = loadCam(dataset_params, i, info, dataset_params.resolution_scales[0])
+                cam.updatePose(info.pose_gt)
+                cam.camera_center = cam.world_view_transform.inverse()[3, :3]
+                gaussian_map.time = i
+                metrics = eval_frame(gaussian_map, cam, os.path.join(args.save_path, 'heldout'),
+                    min_depth=gaussian_map.min_depth, max_depth=gaussian_map.max_depth,
+                    save_picture=False, run_pcd=False)
+                heldout.append(dict(timestamp=float(info.timestamp), **metrics))
+            gaussian_map.time = len(samples)
         # Capture final optimization completion separately from offline ATE/plot/export work.
         result = dict(backend='rocm' if torch.version.hip else 'cuda',
                       device=torch.cuda.get_device_name(), torch_version=str(torch.__version__),
                       hip=torch.version.hip, cuda=torch.version.cuda,
                       orb_active=gaussian_tracker.orb_backend is not None,
                       orb_timestamps=orb_stamps, use_gt_pose=bool(args.use_gt_pose),
-                      frames=samples, online_s=online_s, finalized_s=clock()-loop_start,
+                      frames=samples, heldout=heldout, online_s=online_s, finalized_s=finalized_s,
                       peak_allocated_bytes=torch.cuda.max_memory_allocated(),
                       peak_reserved_bytes=torch.cuda.max_memory_reserved())
         with open(qualification, 'w') as fp:
