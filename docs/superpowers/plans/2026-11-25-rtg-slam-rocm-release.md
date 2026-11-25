@@ -60,6 +60,16 @@ qualification receipts where they preserve each method's implementation.
   The controlled lane preserved the same poses and held-out views.
   Complete-sequence runs and wave64 qualification remain open.
   [Paired results](../../rtg-rocm-paired-120.json)
+- The first complete TUM fr1/desk repetition passed on the same image pair.
+  Both native runs processed all 592 frames with exact timestamps and
+  100% ORB success. Strix Halo ATE was 1.64 cm and RTX 4090 ATE was 1.57 cm.
+  ORB supplied all poses after initialization because every post-init ICP
+  estimate exceeded the fixed acceptance threshold on both devices.
+  Controlled mapping used 532 training frames and 60 held-out views.
+  The ROCm-minus-CUDA PSNR difference was 0.015 dB and all frozen pose
+  and quality gates passed. Replications, TUM fr3/office, A100 and AMD
+  wave64 remain separate qualification steps.
+  [Full-sequence results](../../rtg-rocm-fr1-desk-full-rep1.json)
 
 [ROCm branch](https://github.com/bjoernellens1/RTG-SLAM/tree/rocm-7.2) ·
 [Draft PR #2](https://github.com/bjoernellens1/RTG-SLAM/pull/2) ·

@@ -1,0 +1,94 @@
+{
+  "source_revision": "4ab10c840334ad7b8541dee16c8ff375adf2c413",
+  "repetition": 1,
+  "dataset": "TUM fr1/desk",
+  "q0_array_count": 31,
+  "q0_max_abs_difference": 3.814697265625e-06,
+  "slam": {
+    "pass": true,
+    "checks": {
+      "kernel_parity": true,
+      "cuda_ate": true,
+      "cuda_orb_ok": true,
+      "cuda_nontrivial_motion": true,
+      "rocm_ate": true,
+      "rocm_orb_ok": true,
+      "rocm_nontrivial_motion": true,
+      "ate_parity": true
+    },
+    "rocm": {
+      "online_fps": 1.8885705490444917,
+      "process_wall_s": 338.1895980387926,
+      "finalized_s": 323.3228559968993,
+      "peak_allocated_bytes": 1316642816,
+      "frames_processed": 592,
+      "ate_rmse_m": 0.016413905476969335,
+      "orb_ok_ratio": 1.0,
+      "icp_success_after_init": 0,
+      "orb_timestamp_max_error_s": 0.0
+    },
+    "cuda": {
+      "online_fps": 4.559369902846936,
+      "process_wall_s": 145.36738257715479,
+      "finalized_s": 132.4606494558975,
+      "peak_allocated_bytes": 1222692352,
+      "frames_processed": 592,
+      "ate_rmse_m": 0.01570976333851418,
+      "orb_ok_ratio": 1.0,
+      "icp_success_after_init": 0,
+      "orb_timestamp_max_error_s": 0.0
+    }
+  },
+  "mapper": {
+    "pass": true,
+    "checks": {
+      "kernel_parity": true,
+      "heldout_psnr": true,
+      "heldout_ssim": true,
+      "heldout_lpips": true,
+      "heldout_depth_loss": true,
+      "heldout_valid_pixel_ratio": true,
+      "frozen_pose_cuda": true,
+      "frozen_pose_rocm": true
+    },
+    "rocm": {
+      "online_fps": 2.5769020630314032,
+      "process_wall_s": 229.21171842701733,
+      "finalized_s": 215.42890592571348,
+      "peak_allocated_bytes": 1335698432,
+      "frames_processed": 532,
+      "heldout_frames": 60,
+      "heldout": {
+        "psnr": 6.814723181724548,
+        "ssim": 0.15593108193327984,
+        "lpips": 0.7723006675640742,
+        "depth_loss": 0.4633846657971541,
+        "valid_pixel_ratio": 0.7428426255782445
+      }
+    },
+    "cuda": {
+      "online_fps": 5.481771749990964,
+      "process_wall_s": 110.16144337132573,
+      "finalized_s": 99.6287956298329,
+      "peak_allocated_bytes": 1228392960,
+      "frames_processed": 532,
+      "heldout_frames": 60,
+      "heldout": {
+        "psnr": 6.79938067595164,
+        "ssim": 0.1531510528177023,
+        "lpips": 0.7661583244800567,
+        "depth_loss": 0.4617106705904007,
+        "valid_pixel_ratio": 0.7421168833971024
+      }
+    },
+    "rocm_minus_cuda": {
+      "psnr": 0.01534250577290841,
+      "ssim": 0.002780029115577537,
+      "lpips": 0.00614234308401751,
+      "depth_loss": 0.0016739952067533759,
+      "valid_pixel_ratio": 0.000725742181142186
+    }
+  },
+  "rocm_device": "Radeon 8060S gfx1151",
+  "cuda_device": "RTX 4090"
+}
