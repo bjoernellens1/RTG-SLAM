@@ -14,6 +14,10 @@ pyversion="$("$python_bin" -c 'import sys; print("{}.{}".format(*sys.version_inf
 pyinclude="$("$python_bin" -c 'import sysconfig; print(sysconfig.get_path("include"))')"
 pyplatinclude="$("$python_bin" -c 'import sysconfig; print(sysconfig.get_path("platinclude"))')"
 pylib="$("$python_bin" -c 'import pathlib,sysconfig; print(pathlib.Path(sysconfig.get_config_var("LIBDIR"))/sysconfig.get_config_var("LDLIBRARY"))')"
+# Conda's Python 3.9.0 reports a static archive but ships the shared library.
+if [[ "$pylib" == *.a ]]; then
+  pylib="${pylib%.a}.so"
+fi
 pysite="$("$python_bin" -c 'import sysconfig; print(sysconfig.get_path("platlib"))')"
 numpyinclude="$("$python_bin" -c 'import numpy; print(numpy.get_include())')"
 
