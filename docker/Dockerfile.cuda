@@ -34,7 +34,8 @@ RUN wget -q \
     && /opt/conda/bin/conda clean -afy
 ENV PATH=/opt/conda/envs/rtg/bin:/opt/conda/bin:${PATH}
 
-RUN python -m pip install --upgrade 'pip<25' setuptools wheel ninja \
+# Torch 1.13's extension build imports pkg_resources, removed in setuptools 82.
+RUN python -m pip install --upgrade 'pip<25' 'setuptools<82' wheel ninja \
     && python -m pip install \
       torch==1.13.1+cu117 torchvision==0.14.1+cu117 torchaudio==0.13.1 \
       --extra-index-url https://download.pytorch.org/whl/cu117 \
@@ -47,6 +48,7 @@ WORKDIR /opt
 RUN git clone https://github.com/CJAPPLE5/RTG-SLAM-cuda_utils.git rtg-cuda-utils \
     && git -C rtg-cuda-utils checkout --detach ${RTG_CUDA_UTILS_SHA} \
     && test "$(git -C rtg-cuda-utils rev-parse HEAD)" = "${RTG_CUDA_UTILS_SHA}" \
+    && python -c 'from torch.utils.cpp_extension import CUDAExtension' \
     && python -m pip install --no-build-isolation /opt/rtg-cuda-utils/cuda_utils \
     && python -m pip install --no-build-isolation /opt/rtg-cuda-utils/diff-gaussian-rasterizer-depth \
     && python -m pip install --no-build-isolation /opt/rtg-cuda-utils/simple-knn

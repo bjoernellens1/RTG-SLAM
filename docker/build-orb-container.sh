@@ -6,6 +6,37 @@ jobs="${ORB_BUILD_JOBS:-2}"
 prefix=/opt/rtg-orb
 export CMAKE_PREFIX_PATH="$prefix:${CMAKE_PREFIX_PATH:-}"
 export LD_LIBRARY_PATH="$prefix/lib:${LD_LIBRARY_PATH:-}"
+
+# Boost's bootstrap derives include paths from sys.prefix, which points to
+# the virtualenv in the ROCm image. Use the active interpreter's ABI paths.
+python_bin="$(command -v python)"
+pyversion="$("$python_bin" -c 'import sys; print("{}.{}".format(*sys.version_info))')"
+pyinclude="$("$python_bin" -c 'import sysconfig; print(sysconfig.get_path("include"))')"
+pyplatinclude="$("$python_bin" -c 'import sysconfig; print(sysconfig.get_path("platinclude"))')"
+pylib="$("$python_bin" -c 'import pathlib,sysconfig; print(pathlib.Path(sysconfig.get_config_var("LIBDIR"))/sysconfig.get_config_var("LDLIBRARY"))')"
+pysite="$("$python_bin" -c 'import sysconfig; print(sysconfig.get_path("platlib"))')"
+numpyinclude="$("$python_bin" -c 'import numpy; print(numpy.get_include())')"
+
+printf 'Checking Python %s development files for %s: %s, %s, %s\n' \
+  "$pyversion" "$python_bin" "$pyinclude" "$pyplatinclude" "$pylib"
+(
+  probe="$(mktemp)"
+  trap 'rm -f "$probe"' EXIT
+  c++ -I"$pyinclude" -I"$pyplatinclude" -Wl,-rpath,"${pylib%/*}" \
+    -x c++ - -x none "$pylib" -o "$probe" <<'CPP'
+#include <pyconfig.h>
+#include <Python.h>
+#include <cstdio>
+
+int main() {
+    int major = 0, minor = 0;
+    return std::sscanf(Py_GetVersion(), "%d.%d", &major, &minor) == 2 &&
+        major == PY_MAJOR_VERSION && minor == PY_MINOR_VERSION ? 0 : 1;
+}
+CPP
+  "$probe"
+)
+
 mkdir -p "$prefix" /opt/rtg-build
 cd /opt/rtg-build
 checkout() {
@@ -50,19 +81,20 @@ mkdir -p "$prefix/share"
 cp backend/Vocabulary/ORBvoc.txt "$prefix/share/ORBvoc.txt"
 curl -fLsS --retry 3 https://archives.boost.io/release/1.80.0/source/boost_1_80_0.tar.gz -o boost.tar.gz
 mkdir boost && tar -xzf boost.tar.gz --strip-components=1 -C boost
-(cd boost; ./bootstrap.sh --with-libraries=python --prefix="$prefix" --with-python="$(command -v python)"
- ./b2 install --with-python -j"$jobs")
-pyver="$(python -c 'import sys; print(str(sys.version_info.major)+str(sys.version_info.minor))')"
-pyinclude="$(python -c 'import sysconfig; print(sysconfig.get_paths()["include"])')"
-pylib="$(python -c 'import pathlib,sysconfig; print(pathlib.Path(sysconfig.get_config_var("LIBDIR"))/sysconfig.get_config_var("LDLIBRARY"))')"
-pysite="$(python -c 'import sysconfig; print(sysconfig.get_paths()["platlib"])')"
-numpyinclude="$(python -c 'import numpy; print(numpy.get_include())')"
-test -f "$pylib"
-test -f "$prefix/lib/libboost_python${pyver}.so"
+(
+  cd boost
+  ./bootstrap.sh --with-libraries=python --prefix="$prefix" --with-python="$python_bin"
+  cat > rtg-python.jam <<EOF
+using python : $pyversion : "$python_bin" : "$pyinclude" "$pyplatinclude" : "${pylib%/*}" ;
+EOF
+  ./b2 --user-config="$PWD/rtg-python.jam" install --with-python python="$pyversion" -j"$jobs"
+)
+boost_python="$prefix/lib/libboost_python${pyversion/./}.so"
+test -f "$boost_python"
 cmake -S binding -B binding/build -DCMAKE_BUILD_TYPE=Release \
-  -DPYTHON_INCLUDE_DIRS="$pyinclude" -DPYTHON_LIBRARIES="$pylib" \
-  -DPYTHON_EXECUTABLE="$(command -v python)" -DBoost_INCLUDE_DIRS="$prefix/include" \
-  -DBoost_LIBRARIES="$prefix/lib/libboost_python${pyver}.so" \
+  -DPYTHON_INCLUDE_DIRS="$pyinclude;$pyplatinclude" -DPYTHON_LIBRARIES="$pylib" \
+  -DPYTHON_EXECUTABLE="$python_bin" -DBoost_INCLUDE_DIRS="$prefix/include" \
+  -DBoost_LIBRARIES="$boost_python" \
   -DORB_SLAM2_INCLUDE_DIR="$prefix/include/ORB_SLAM2" \
   -DORB_SLAM2_LIBRARIES="$prefix/lib/libORB_SLAM2.so" \
   -DOpenCV_DIR="$prefix/lib/cmake/opencv4" -DPangolin_DIR="$prefix/lib/cmake/Pangolin" \
