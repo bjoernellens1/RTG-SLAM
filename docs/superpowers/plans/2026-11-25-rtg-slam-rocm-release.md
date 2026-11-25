@@ -41,6 +41,16 @@ qualification receipts where they preserve each method's implementation.
   lacks PyTorch3D. Restore that GPU dependency and repeat both lanes.
   CUDA build, paired numerical equivalence, and completed mapping remain
   release gates.
+- Draft PR #2 revision `4ab10c840334ad7b8541dee16c8ff375adf2c413`
+  restores the original PyTorch3D call and pins its CUDA and HIP builds.
+  The exact CUDA image built and passed the ORB import. Both physical
+  Strix Halo Q1 lanes completed 120 frames using the functional overlay
+  `sha256:ad9cb98373f0ebeffbd99f4ded6a532bc48bf19581fc3ee827e31192a6c0a41c`.
+  Native SLAM recorded 120 successful ORB states and 1.65 cm aligned ATE
+  RMSE. ICP reported success only for initialization. The controlled lane
+  kept all supplied poses exact and evaluated 12 held-out views with
+  7.50 dB PSNR. Repeat both lanes on the exact full images before claiming
+  paired equivalence or full-sequence support.
 
 [ROCm branch](https://github.com/bjoernellens1/RTG-SLAM/tree/rocm-7.2) ·
 [Draft PR #2](https://github.com/bjoernellens1/RTG-SLAM/pull/2) ·
@@ -86,6 +96,21 @@ qualification receipts where they preserve each method's implementation.
    timings. Publish redistributable artifacts only.
 
 [Candidate qualification commands](../../full-rocm-qualification.md)
+
+## Redistribution inventory
+
+The verified ROCm image contains the depth rasterizer and its license under
+`/opt/rtg-cuda-utils/diff-gaussian-rasterizer-depth` from RTG CUDA utilities
+revision `24dcf0aec00f35229f247ac206a5c0b141e15991`. Its separate research
+license limits use and requires the complete license and existing notices
+to accompany covered distributions. The candidate PyTorch3D HIP source
+uses a BSD license with its own notice requirements. Record each component
+in the release notice bundle. [Pinned rasterizer license](https://github.com/CJAPPLE5/RTG-SLAM-cuda_utils/blob/24dcf0aec00f35229f247ac206a5c0b141e15991/diff-gaussian-rasterizer-depth/LICENSE.md) · [Pinned PyTorch3D license](https://github.com/facebookresearch/pytorch3d/blob/b73d735ecf194c31de812feffef3a55cc3726128/LICENSE)
+
+The source inventory and image notices still need confirmation for the
+RTG utility and Simple-KNN code, the original ORB frontend and vocabulary,
+the CUDA PyTorch3D package, base-image and system packages, and any model
+weights or fixtures attached to a release.
 
 ## Release and community launch
 
