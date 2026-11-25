@@ -43,6 +43,19 @@ RUN python -m pip install --upgrade 'pip<25' 'setuptools<82' wheel ninja \
       'numpy<2' 'torchmetrics==1.4.3' plyfile tqdm tensorboard pytorch_msssim trimesh scikit-image open3d pandas \
       pyyaml scipy matplotlib GPUtil opencv-python-headless
 
+# The official package matches the existing Python, CUDA and Torch ABI.
+# Install the package itself without replacing the pinned author Torch wheels.
+ARG RTG_PYTORCH3D_PACKAGE=pytorch3d-0.7.5-py39_cu117_pyt1131.tar.bz2
+ARG RTG_PYTORCH3D_SHA256=96a3970ef40da8f37cc9901da4b0678a85be9336ea5eb5a0139ef131d2065373
+RUN curl -fLsS --retry 3 "https://conda.anaconda.org/pytorch3d/linux-64/${RTG_PYTORCH3D_PACKAGE}" \
+      -o "/tmp/${RTG_PYTORCH3D_PACKAGE}" \
+    && printf '%s  %s\n' "${RTG_PYTORCH3D_SHA256}" "/tmp/${RTG_PYTORCH3D_PACKAGE}" | sha256sum --check \
+    && conda install -y -n rtg --offline --no-deps "/tmp/${RTG_PYTORCH3D_PACKAGE}" \
+    && rm "/tmp/${RTG_PYTORCH3D_PACKAGE}" \
+    && conda clean -afy \
+    && python -m pip install 'fvcore==0.1.5.post20221221' 'iopath==0.1.10' \
+    && python -c 'import torch; from pytorch3d import _C; from pytorch3d.ops import knn_points; assert hasattr(_C, "knn_points_idx")'
+
 # Exact RTG GPU extension gitlink.
 WORKDIR /opt
 RUN git clone https://github.com/CJAPPLE5/RTG-SLAM-cuda_utils.git rtg-cuda-utils \
@@ -75,6 +88,7 @@ LABEL researchflow.method="rtg_slam" \
       researchflow.rtg_cuda_utils.sha="${RTG_CUDA_UTILS_SHA}" \
       researchflow.rtg_pybind.sha="${RTG_PYBIND_SHA}" \
       researchflow.rtg_orb_backend.sha="${RTG_ORB_BACKEND_SHA}" \
+      researchflow.pytorch3d.sha256="${RTG_PYTORCH3D_SHA256}" \
       researchflow.backend="cuda" \
       researchflow.cuda="11.7" \
       researchflow.torch="1.13.1+cu117" \

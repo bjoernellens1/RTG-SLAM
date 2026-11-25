@@ -7,6 +7,7 @@ import os
 
 import numpy as np
 import torch
+from pytorch3d.ops import knn_points
 from simple_knn._C import distCUDA2
 from cuda_utils import _C as rtg_cuda
 from diff_gaussian_rasterization_depth import GaussianRasterizationSettings, GaussianRasterizer
@@ -32,6 +33,54 @@ pts = torch.tensor(
 d2_mean, d2_indices = distCUDA2(pts)
 assert d2_mean.is_cuda and torch.isfinite(d2_mean).all()
 assert d2_indices.is_cuda
+
+# The mapper filters temporary points with cross-cloud K=3 and checks isolated
+# points with self-query K=6. Use dyadic coordinates for exact reference dists.
+refs = torch.tensor(
+    [[[0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [3.0, 0.0, 0.0],
+      [7.0, 0.0, 0.0], [15.0, 0.0, 0.0], [31.0, 0.0, 0.0], [63.0, 0.0, 0.0]]],
+    dtype=torch.float32,
+    device=device,
+)
+queries = torch.tensor([[[0.25, 0.5, 0.0], [6.75, 0.0, -0.5]]], device=device)
+mapper_knn_tensors = {}
+for label, query, reference, neighbors in (
+    ("cross", queries, refs, 3),
+    ("self", refs, refs, 6),
+    ("short", queries, refs[:, :2], 3),
+):
+    dists, indices, points = knn_points(query, reference, norm=2, K=neighbors, return_nn=True)
+    assert dists.is_cuda and indices.is_cuda and points.is_cuda
+    valid = min(neighbors, reference.shape[1])
+    matrix = (query[:, :, None] - reference[:, None]).square().sum(-1)
+    expected_dist, expected_index = matrix.topk(valid, dim=-1, largest=False)
+    torch.testing.assert_close(dists[..., :valid], expected_dist, rtol=0, atol=0)
+    torch.testing.assert_close(indices[..., :valid], expected_index, rtol=0, atol=0)
+    torch.testing.assert_close(points[..., :valid, :], reference[0][expected_index], rtol=0, atol=0)
+    assert (dists[..., valid:] == 0).all() and (indices[..., valid:] == 0).all()
+    assert (points[..., valid:, :] == 0).all()
+    mapper_knn_tensors.update({
+        f"mapper_knn_{label}_squared_distances": dists,
+        f"mapper_knn_{label}_indices": indices,
+        f"mapper_knn_{label}_points": points,
+    })
+
+# Compare tied membership by distance and index. Native order is diagnostic.
+tie_refs = torch.tensor([[[-1.0, 0.0, 0.0], [1.0, 0.0, 0.0], [2.0, 0.0, 0.0]]], device=device)
+tie_dist, tie_idx, _ = knn_points(refs[:, :1], tie_refs, norm=2, K=3, return_nn=True)
+torch.testing.assert_close(tie_dist, torch.tensor([[[1.0, 1.0, 4.0]]], device=device), rtol=0, atol=0)
+tie_idx_sorted, by_index = tie_idx.sort(dim=-1)
+by_distance = tie_dist.gather(-1, by_index).argsort(dim=-1, stable=True)
+canonical_tie_idx = tie_idx_sorted.gather(-1, by_distance)
+torch.testing.assert_close(canonical_tie_idx, torch.arange(3, device=device).reshape(1, 1, 3))
+radii = torch.tensor([1.0, 2.0, 1.0], device=device)
+tie_inside = (tie_dist.sqrt() < radii[tie_idx] * 0.6).any(dim=-1)
+assert tie_inside.all()
+mapper_knn_tensors.update(
+    mapper_knn_tie_squared_distances=tie_dist,
+    mapper_knn_tie_indices=canonical_tie_idx,
+    mapper_knn_tie_inside=tie_inside,
+)
 
 # RTG-specific map accumulation extension.
 H = W = 2
@@ -100,6 +149,7 @@ torch.cuda.synchronize()
 # Record actual tensors for cross-vendor numerical checks, not just finite flags.
 if os.environ.get("RTG_SMOKE_ARRAYS"):
     tensors = {"knn_mean": d2_mean, "knn_indices": d2_indices}
+    tensors.update(mapper_knn_tensors)
     tensors.update({f"accum_{i}": t for i, t in enumerate(out)})
     tensors.update({f"render_{i}": t for i, t in enumerate(outputs) if isinstance(t, torch.Tensor)})
     for name, t in (("means", means3d), ("opacity", opacities), ("colors", colors),
@@ -112,9 +162,11 @@ print(json.dumps({
     "backend": expected,
     "hip": torch.version.hip,
     "device": torch.cuda.get_device_name(0),
+    "mapper_knn_native_tie_indices": tie_idx.cpu().tolist(),
     "capabilities": [
         "rtg_cuda_utils_gpu",
         "rtg_depth_rasterizer_gpu",
         "simple_knn_gpu",
+        "pytorch3d_mapper_knn_gpu",
     ],
 }, sort_keys=True))

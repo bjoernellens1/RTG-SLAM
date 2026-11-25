@@ -4,6 +4,7 @@ import time
 import random
 import copy
 import torch.multiprocessing as mp
+from pytorch3d.ops import knn_points
 from torch.utils.tensorboard import SummaryWriter
 from tqdm import tqdm
 from collections import deque

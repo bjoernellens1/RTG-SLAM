@@ -37,6 +37,18 @@ RUN cd /opt/rtg-cuda-utils \
     && python -m pip install --no-build-isolation ./diff-gaussian-rasterizer-depth \
     && python -m pip install --no-build-isolation ./simple-knn
 
+# Mapper KNN uses the PyTorch3D kernel. Build the upstream HIP port for this
+# PyTorch and architecture, including on CPU-only image builders.
+ARG RTG_PYTORCH3D_SHA=b73d735ecf194c31de812feffef3a55cc3726128
+RUN git init /tmp/pytorch3d \
+    && git -C /tmp/pytorch3d fetch --depth 1 https://github.com/facebookresearch/pytorch3d.git "${RTG_PYTORCH3D_SHA}" \
+    && git -C /tmp/pytorch3d checkout --detach FETCH_HEAD \
+    && test "$(git -C /tmp/pytorch3d rev-parse HEAD)" = "${RTG_PYTORCH3D_SHA}" \
+    && python -m pip install 'iopath==0.1.10' \
+    && FORCE_CUDA=1 MAX_JOBS=4 python -m pip install --no-build-isolation --no-deps /tmp/pytorch3d \
+    && python -c 'import torch; from pytorch3d import _C; from pytorch3d.ops import knn_points; assert hasattr(_C, "knn_points_idx")' \
+    && rm -rf /tmp/pytorch3d
+
 WORKDIR /workspace/RTG-SLAM
 COPY . /workspace/RTG-SLAM
 RUN python -m pip install 'numpy<2' 'torchmetrics==1.4.3' \
@@ -50,6 +62,7 @@ LABEL researchflow.method="rtg_slam" \
       researchflow.rtg_cuda_utils.sha="${RTG_CUDA_UTILS_SHA}" \
       researchflow.rtg_pybind.sha="${RTG_PYBIND_SHA}" \
       researchflow.rtg_orb_backend.sha="${RTG_ORB_BACKEND_SHA}" \
+      researchflow.pytorch3d.sha="${RTG_PYTORCH3D_SHA}" \
       researchflow.backend="rocm" \
       researchflow.rocm="7.2.4" \
       researchflow.amd_moat.sha="${AMD_MOAT_SHA}" \
