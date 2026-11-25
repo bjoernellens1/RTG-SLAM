@@ -53,6 +53,8 @@ git clone --depth 1 --branch 3.4.0 https://gitlab.com/libeigen/eigen.git eigen
 cmake -S eigen -B eigen/build -DCMAKE_INSTALL_PREFIX="$prefix" -DBUILD_TESTING=OFF
 cmake --install eigen/build
 git clone --depth 1 --branch v0.5 https://github.com/stevenlovegrove/Pangolin.git Pangolin
+# glibc before 2.34 exports shm_open and shm_unlink from librt.
+printf '\ntarget_link_libraries(pangolin rt)\n' >> Pangolin/src/CMakeLists.txt
 # Viewer is disabled in RTG tracking. Retain GUI linking, avoid obsolete FFmpeg video APIs.
 cmake -S Pangolin -B Pangolin/build -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX="$prefix" \
   -DBUILD_EXAMPLES=OFF -DBUILD_PANGOLIN_VIDEO=OFF -DBUILD_EXTERN_GLEW=OFF \
