@@ -1,7 +1,7 @@
 # RTG-SLAM controlled/stress mapper image for AMD GPUs.
 # End-to-end paper reproduction remains CUDA-canonical until equivalence passes.
 ARG ROCM_PYTORCH_IMAGE=rocm/pytorch:rocm7.2.4_ubuntu22.04_py3.10_pytorch_release_2.9.1@sha256:9c9592175fece788d6c0b86059012f49b568dc95c98c13879dfdf89c30342559
-FROM ${ROCM_PYTORCH_IMAGE}
+FROM ${ROCM_PYTORCH_IMAGE} AS mapper-core
 
 ARG RTG_UPSTREAM_SHA=49dada148551961e2dee38040a4f760fa1b0f01d
 ARG RTG_CUDA_UTILS_SHA=24dcf0aec00f35229f247ac206a5c0b141e15991
@@ -30,18 +30,32 @@ WORKDIR /opt
 RUN git clone https://github.com/CJAPPLE5/RTG-SLAM-cuda_utils.git rtg-cuda-utils \
     && git -C rtg-cuda-utils checkout --detach ${RTG_CUDA_UTILS_SHA} \
     && test "$(git -C rtg-cuda-utils rev-parse HEAD)" = "${RTG_CUDA_UTILS_SHA}"
+COPY docker/patches/rtg-empty-tile-rasterizer.patch /tmp/rtg-empty-tile-rasterizer.patch
 COPY docker/patches/rocm-embedded-extensions.py /tmp/rocm-embedded-extensions.py
 RUN cd /opt/rtg-cuda-utils \
+    && git apply /tmp/rtg-empty-tile-rasterizer.patch \
     && python /tmp/rocm-embedded-extensions.py \
     && python -m pip install --no-build-isolation ./cuda_utils \
     && python -m pip install --no-build-isolation ./diff-gaussian-rasterizer-depth \
     && python -m pip install --no-build-isolation ./simple-knn
 
+# Mapper KNN uses the PyTorch3D kernel. Build the upstream HIP port for this
+# PyTorch and architecture, including on CPU-only image builders.
+ARG RTG_PYTORCH3D_SHA=b73d735ecf194c31de812feffef3a55cc3726128
+RUN git init /tmp/pytorch3d \
+    && git -C /tmp/pytorch3d fetch --depth 1 https://github.com/facebookresearch/pytorch3d.git "${RTG_PYTORCH3D_SHA}" \
+    && git -C /tmp/pytorch3d checkout --detach FETCH_HEAD \
+    && test "$(git -C /tmp/pytorch3d rev-parse HEAD)" = "${RTG_PYTORCH3D_SHA}" \
+    && python -m pip install 'iopath==0.1.10' \
+    && FORCE_CUDA=1 MAX_JOBS=4 python -m pip install --no-build-isolation --no-deps /tmp/pytorch3d \
+    && python -c 'import torch; from pytorch3d import _C; from pytorch3d.ops import knn_points; assert hasattr(_C, "knn_points_idx")' \
+    && rm -rf /tmp/pytorch3d
+
 WORKDIR /workspace/RTG-SLAM
 COPY . /workspace/RTG-SLAM
-RUN python -m pip install \
-      plyfile tqdm tensorboard torchmetrics pytorch_msssim trimesh scikit-image \
-      open3d pyyaml scipy opencv-python-headless matplotlib GPUtil
+RUN python -m pip install 'numpy<2' 'torchmetrics==1.4.3' \
+      plyfile tqdm tensorboard pytorch_msssim trimesh scikit-image \
+      open3d pyyaml scipy opencv-python-headless matplotlib pandas
 
 COPY scripts/smoke/rtg_extensions.py /opt/smoke/rtg_extensions.py
 
@@ -50,6 +64,7 @@ LABEL researchflow.method="rtg_slam" \
       researchflow.rtg_cuda_utils.sha="${RTG_CUDA_UTILS_SHA}" \
       researchflow.rtg_pybind.sha="${RTG_PYBIND_SHA}" \
       researchflow.rtg_orb_backend.sha="${RTG_ORB_BACKEND_SHA}" \
+      researchflow.pytorch3d.sha="${RTG_PYTORCH3D_SHA}" \
       researchflow.backend="rocm" \
       researchflow.rocm="7.2.4" \
       researchflow.amd_moat.sha="${AMD_MOAT_SHA}" \
@@ -57,3 +72,25 @@ LABEL researchflow.method="rtg_slam" \
       researchflow.controlled.frontend="disabled"
 
 CMD ["python", "/opt/smoke/rtg_extensions.py"]
+
+# Full SLAM target, opt-in until GPU/sequence parity is established.
+FROM mapper-core AS full
+ARG ORB_BUILD_JOBS=2
+RUN apt-get update && apt-get install -y --no-install-recommends \
+      curl ca-certificates libgl1-mesa-dev libegl1-mesa-dev libglew-dev \
+      libx11-dev libxext-dev libxi-dev libxrandr-dev libxinerama-dev libxcursor-dev \
+      libjpeg-dev libpng-dev libtiff-dev zlib1g-dev \
+    && rm -rf /var/lib/apt/lists/*
+COPY docker/build-orb-container.sh /tmp/build-orb-container.sh
+RUN RTG_PYBIND_SHA="$RTG_PYBIND_SHA" RTG_ORB_BACKEND_SHA="$RTG_ORB_BACKEND_SHA" \
+      ORB_BUILD_JOBS="$ORB_BUILD_JOBS" bash /tmp/build-orb-container.sh
+ENV LD_LIBRARY_PATH=/opt/rtg-orb/lib:${LD_LIBRARY_PATH}
+RUN mkdir -p thirdParty/ORB-SLAM2-PYBIND/Vocabulary \
+    && ln -sf /opt/rtg-orb/share/ORBvoc.txt thirdParty/ORB-SLAM2-PYBIND/Vocabulary/ORBvoc.txt
+COPY scripts/smoke/rtg_orb.py /opt/smoke/rtg_orb.py
+RUN python /opt/smoke/rtg_orb.py
+
+LABEL researchflow.controlled.frontend="enabled" researchflow.qualification="candidate"
+
+# Existing publisher retains mapper-core semantics until full qualification passes.
+FROM mapper-core AS default

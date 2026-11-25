@@ -8,8 +8,6 @@ import open3d as o3d
 import torch
 import torch.nn.functional as F
 from plyfile import PlyData, PlyElement
-from pytorch3d.loss import chamfer_distance
-from pytorch3d.ops import knn_points
 from skimage import filters
 from skimage.color import rgb2gray
 import numpy
