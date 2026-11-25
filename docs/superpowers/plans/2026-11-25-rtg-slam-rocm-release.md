@@ -25,8 +25,12 @@ qualification receipts where they preserve each method's implementation.
   distinct from unmodified upstream.
 - The earlier workflow built `gfx1151`, `gfx1201`, and `gfx90a` containers.
   Its CUDA build failed and the GPU qualification stages were skipped.
-  Check job logs and artifact provenance on the exact PR head before using
-  a newer CI outcome. Public release requires physical GPU evidence.
+  The exact PR-head workflow also passed CPU qualification and the three
+  mapper image builds. Its full ROCm image failed in Boost.Python because
+  `pyconfig.h` was missing, and its CUDA build failed. Repair the binding's
+  selected Python development include path and verify header and ABI
+  discovery with a compile probe before rebuilding. Public release requires
+  physical GPU evidence.
 
 [ROCm branch](https://github.com/bjoernellens1/RTG-SLAM/tree/rocm-7.2) ·
 [Draft PR #2](https://github.com/bjoernellens1/RTG-SLAM/pull/2) ·
