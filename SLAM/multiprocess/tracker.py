@@ -368,7 +368,7 @@ class Tracker(object):
         plt.legend(["es", "gt"])
         plt.savefig(os.path.join(save_traj_path, "traj_xy.jpg"))
         
-        if self.use_orb_backend:
+        if self.orb_backend is not None:
             self.orb_backend.shutdown()
         
     def eval_ate(self, pose_es, pose_gt, frame_id=-1):

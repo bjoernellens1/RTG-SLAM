@@ -9,6 +9,7 @@ ARG RTG_ORB_BACKEND_SHA=9cb671553e72782f354a91825187cdcfc83e6f30
 ARG PANGOLIN_REF=v0.5
 ARG OPENCV_VERSION=4.2.0
 ARG BOOST_VERSION=1.80.0
+ARG ORB_BUILD_JOBS=2
 ARG MINIFORGE_VERSION=23.3.1-1
 ENV DEBIAN_FRONTEND=noninteractive \
     PIP_NO_CACHE_DIR=1 \
@@ -38,7 +39,7 @@ RUN python -m pip install --upgrade 'pip<25' setuptools wheel ninja \
       torch==1.13.1+cu117 torchvision==0.14.1+cu117 torchaudio==0.13.1 \
       --extra-index-url https://download.pytorch.org/whl/cu117 \
     && python -m pip install \
-      plyfile tqdm tensorboard torchmetrics pytorch_msssim trimesh scikit-image \
+      'numpy<2' 'torchmetrics==1.4.3' plyfile tqdm tensorboard pytorch_msssim trimesh scikit-image open3d pandas \
       pyyaml scipy matplotlib GPUtil opencv-python-headless
 
 # Exact RTG GPU extension gitlink.
@@ -50,73 +51,22 @@ RUN git clone https://github.com/CJAPPLE5/RTG-SLAM-cuda_utils.git rtg-cuda-utils
     && python -m pip install --no-build-isolation /opt/rtg-cuda-utils/diff-gaussian-rasterizer-depth \
     && python -m pip install --no-build-isolation /opt/rtg-cuda-utils/simple-knn
 
-# Build the exact ORB-SLAM2 toolchain used by RTG for real-data backend
-# optimization. The Pangolin patch is the compatibility fix referenced by RTG.
-RUN git clone --depth 1 --branch ${PANGOLIN_REF} https://github.com/stevenlovegrove/Pangolin.git /opt/Pangolin
-COPY docker/patches/pangolin-v05-ffmpeg.patch /tmp/pangolin-v05-ffmpeg.patch
-RUN cd /opt/Pangolin \
-    && git apply /tmp/pangolin-v05-ffmpeg.patch \
-    && cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=/opt/rtg-orb \
-    && cmake --build build --parallel "$(nproc)" \
-    && cmake --install build
-
-RUN wget -q "https://github.com/opencv/opencv/archive/${OPENCV_VERSION}.tar.gz" -O /tmp/opencv.tar.gz \
-    && mkdir -p /opt/opencv-src \
-    && tar -xzf /tmp/opencv.tar.gz --strip-components=1 -C /opt/opencv-src \
-    && cmake -S /opt/opencv-src -B /opt/opencv-src/build \
-      -DCMAKE_BUILD_TYPE=Release \
-      -DCMAKE_INSTALL_PREFIX=/opt/rtg-orb \
-      -DBUILD_TESTS=OFF -DBUILD_PERF_TESTS=OFF -DBUILD_EXAMPLES=OFF \
-      -DBUILD_opencv_python2=OFF -DBUILD_opencv_python3=OFF \
-    && cmake --build /opt/opencv-src/build --parallel "$(nproc)" \
-    && cmake --install /opt/opencv-src/build \
-    && rm -f /tmp/opencv.tar.gz
-
-RUN git clone https://github.com/CJAPPLE5/RTG-SLAM-BACKEND.git /opt/RTG-SLAM-BACKEND \
-    && git -C /opt/RTG-SLAM-BACKEND checkout --detach ${RTG_ORB_BACKEND_SHA} \
-    && test "$(git -C /opt/RTG-SLAM-BACKEND rev-parse HEAD)" = "${RTG_ORB_BACKEND_SHA}" \
-    && cd /opt/RTG-SLAM-BACKEND \
-    && bash build.sh /opt/rtg-orb/lib/cmake/opencv4 /opt/rtg-orb
-
-# Boost.Python 1.80.0 as specified by RTG's build_orb.sh. Use the maintained
-# Boost archive rather than the retired JFrog URL in the historical script.
-RUN boost_u="${BOOST_VERSION//./_}" \
-    && wget -q "https://archives.boost.io/release/${BOOST_VERSION}/source/boost_${boost_u}.tar.gz" -O /tmp/boost.tar.gz \
-    && mkdir -p /opt/boost-src \
-    && tar -xzf /tmp/boost.tar.gz --strip-components=1 -C /opt/boost-src \
-    && cd /opt/boost-src \
-    && ./bootstrap.sh --with-libraries=python --prefix=/opt/rtg-orb --with-python="$(which python)" \
-    && ./b2 install --with-python -j"$(nproc)" \
-    && rm -f /tmp/boost.tar.gz
-
-RUN git clone https://github.com/CJAPPLE5/RTG-SLAM-PYBIND.git /opt/RTG-SLAM-PYBIND \
-    && git -C /opt/RTG-SLAM-PYBIND checkout --detach ${RTG_PYBIND_SHA} \
-    && test "$(git -C /opt/RTG-SLAM-PYBIND rev-parse HEAD)" = "${RTG_PYBIND_SHA}" \
-    && python_include="$(python -c 'import sysconfig; print(sysconfig.get_paths()["include"])')" \
-    && python_lib="$(python -c 'import sysconfig, pathlib; p=pathlib.Path(sysconfig.get_config_var("LIBDIR")); print(p/sysconfig.get_config_var("LDLIBRARY"))')" \
-    && python_site="$(python -c 'import site; print(site.getsitepackages()[0])')" \
-    && numpy_include="$(python -c 'import numpy; print(numpy.get_include())')" \
-    && cmake -S /opt/RTG-SLAM-PYBIND -B /opt/RTG-SLAM-PYBIND/build \
-      -DCMAKE_BUILD_TYPE=Release \
-      -DPYTHON_INCLUDE_DIRS="${python_include}" \
-      -DPYTHON_LIBRARIES="${python_lib}" \
-      -DPYTHON_EXECUTABLE="$(which python)" \
-      -DBoost_INCLUDE_DIRS=/opt/rtg-orb/include \
-      -DBoost_LIBRARIES=/opt/rtg-orb/lib/libboost_python39.so \
-      -DORB_SLAM2_INCLUDE_DIR=/opt/rtg-orb/include/ORB_SLAM2 \
-      -DORB_SLAM2_LIBRARIES=/opt/rtg-orb/lib/libORB_SLAM2.so \
-      -DOpenCV_DIR=/opt/rtg-orb/lib/cmake/opencv4 \
-      -DPangolin_DIR=/opt/rtg-orb/lib/cmake/Pangolin \
-      -DPYTHON_NUMPY_INCLUDE_DIR="${numpy_include}" \
-      -DCMAKE_INSTALL_PREFIX="${python_site}" \
-    && cmake --build /opt/RTG-SLAM-PYBIND/build --parallel "$(nproc)" \
-    && cmake --install /opt/RTG-SLAM-PYBIND/build
-
-ENV LD_LIBRARY_PATH=/opt/rtg-orb/lib:${LD_LIBRARY_PATH}
 WORKDIR /workspace/RTG-SLAM
 COPY . /workspace/RTG-SLAM
 COPY scripts/smoke/rtg_extensions.py /opt/smoke/rtg_extensions.py
+RUN apt-get update && apt-get install -y --no-install-recommends \
+      curl ca-certificates libgl1-mesa-dev libegl1-mesa-dev libglew-dev \
+      libx11-dev libxext-dev libxi-dev libxrandr-dev libxinerama-dev libxcursor-dev \
+      libjpeg-dev libpng-dev libtiff-dev zlib1g-dev \
+    && rm -rf /var/lib/apt/lists/*
+COPY docker/build-orb-container.sh /tmp/build-orb-container.sh
+RUN RTG_PYBIND_SHA="$RTG_PYBIND_SHA" RTG_ORB_BACKEND_SHA="$RTG_ORB_BACKEND_SHA" \
+      ORB_BUILD_JOBS="$ORB_BUILD_JOBS" bash /tmp/build-orb-container.sh
+ENV LD_LIBRARY_PATH=/opt/rtg-orb/lib:${LD_LIBRARY_PATH}
+RUN mkdir -p thirdParty/ORB-SLAM2-PYBIND/Vocabulary \
+    && ln -sf /opt/rtg-orb/share/ORBvoc.txt thirdParty/ORB-SLAM2-PYBIND/Vocabulary/ORBvoc.txt
 COPY scripts/smoke/rtg_orb.py /opt/smoke/rtg_orb.py
+RUN python /opt/smoke/rtg_orb.py
 
 LABEL researchflow.method="rtg_slam" \
       researchflow.upstream.sha="${RTG_UPSTREAM_SHA}" \

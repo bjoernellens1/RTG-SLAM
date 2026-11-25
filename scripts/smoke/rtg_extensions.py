@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import os
 
+import numpy as np
 import torch
 from simple_knn._C import distCUDA2
 from cuda_utils import _C as rtg_cuda
@@ -21,7 +22,7 @@ device = torch.device("cuda:0")
 
 # Exact simple-knn algorithm path.
 pts = torch.tensor(
-    [[0.0, 0.0, 1.0], [0.1, 0.0, 1.0], [0.0, 0.1, 1.0], [0.1, 0.1, 1.0]],
+    [[0.0, 0.0, 1.0], [0.13, 0.0, 1.0], [0.0, 0.21, 1.0], [0.32, 0.15, 1.0]],
     dtype=torch.float32,
     device=device,
 )
@@ -35,9 +36,9 @@ assert d2_indices.is_cuda
 # RTG-specific map accumulation extension.
 H = W = 2
 P = 4
-color_error = torch.zeros((H, W), device=device, dtype=torch.float32)
-depth_error = torch.zeros((H, W), device=device, dtype=torch.float32)
-normal_error = torch.zeros((H, W), device=device, dtype=torch.float32)
+color_error = torch.arange(1, P+1, device=device, dtype=torch.float32).reshape(H,W) * 0.03
+depth_error = color_error * 0.7
+normal_error = color_error * 0.2
 color_index = torch.arange(P, device=device, dtype=torch.int32).reshape(H, W)
 depth_index = color_index.clone()
 out = rtg_cuda.accumulate_gaussian_error(
@@ -94,6 +95,18 @@ assert all(
 )
 (outputs[0].sum() + outputs[1].sum() * 1e-3).backward()
 assert means3d.grad is not None and torch.isfinite(means3d.grad).all()
+
+torch.cuda.synchronize()
+# Record actual tensors for cross-vendor numerical checks, not just finite flags.
+if os.environ.get("RTG_SMOKE_ARRAYS"):
+    tensors = {"knn_mean": d2_mean, "knn_indices": d2_indices}
+    tensors.update({f"accum_{i}": t for i, t in enumerate(out)})
+    tensors.update({f"render_{i}": t for i, t in enumerate(outputs) if isinstance(t, torch.Tensor)})
+    for name, t in (("means", means3d), ("opacity", opacities), ("colors", colors),
+                    ("scales", scales), ("rotation", rotations)):
+        if t.grad is not None:
+            tensors[f"grad_{name}"] = t.grad
+    np.savez(os.environ["RTG_SMOKE_ARRAYS"], **{k: v.detach().cpu().numpy() for k,v in tensors.items()})
 
 print(json.dumps({
     "backend": expected,

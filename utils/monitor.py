@@ -1,4 +1,4 @@
-import GPUtil
+import torch
 import time
 import numpy as np
 import os
@@ -38,8 +38,11 @@ class Recorder(object):
 
     def watch_gpu(self):
         # current gpu info
-        gpu = GPUtil.getGPUs()[self._gpu_id]
-        memory_used = gpu.memoryUsed
+        # Use the process-visible GPU; PyTorch exposes HIP through torch.cuda.
+        free, total = torch.cuda.mem_get_info(torch.cuda.current_device())
+        memory_used = (total - free) / (1024 ** 2)
+        self.update_max("torch_peak_allocated_mib", torch.cuda.max_memory_allocated() / (1024 ** 2))
+        self.update_max("torch_peak_reserved_mib", torch.cuda.max_memory_reserved() / (1024 ** 2))
         self.update_max("gpu_memory", memory_used)
         return memory_used / 1024.0
 
