@@ -51,6 +51,15 @@ qualification receipts where they preserve each method's implementation.
   kept all supplied poses exact and evaluated 12 held-out views with
   7.50 dB PSNR. Repeat both lanes on the exact full images before claiming
   paired equivalence or full-sequence support.
+- The exact full images subsequently passed the paired 120-frame gates on
+  physical Strix Halo and RTX 4090. All 31 GPU smoke arrays passed. ORB
+  timestamp association was exact and both devices reported 120 successful
+  ORB states. The aligned ATE RMSE was 1.52 cm on Strix Halo and 1.61 cm
+  on RTX 4090. After initialization all 119 ICP losses on both devices
+  exceeded the fixed acceptance threshold, so ORB supplied the poses.
+  The controlled lane preserved the same poses and held-out views.
+  Complete-sequence runs and wave64 qualification remain open.
+  [Paired results](../../rtg-rocm-paired-120.json)
 
 [ROCm branch](https://github.com/bjoernellens1/RTG-SLAM/tree/rocm-7.2) ·
 [Draft PR #2](https://github.com/bjoernellens1/RTG-SLAM/pull/2) ·

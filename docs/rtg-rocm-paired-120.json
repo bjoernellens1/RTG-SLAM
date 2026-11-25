@@ -1,0 +1,69 @@
+{
+  "source_revision": "4ab10c840334ad7b8541dee16c8ff375adf2c413",
+  "dataset": "TUM fr1/desk, 120-frame prefix",
+  "cuda_device": "RTX 4090",
+  "rocm_device": "Radeon 8060S gfx1151",
+  "q0_arrays": 31,
+  "q0_mapper_knn_arrays": 12,
+  "q0_max_abs": 3.814697265625e-06,
+  "slam": {
+    "cuda": {
+      "online_fps": 5.947794102424753,
+      "finalized_s": 20.481230080593377,
+      "process_wall_s": 28.26348688174039,
+      "peak_allocated_bytes": 505508864,
+      "ate_rmse_m": 0.016095437921779365,
+      "orb_ok_ratio": 1.0,
+      "icp_success_after_init": 0,
+      "icp_min_loss": 0.0454,
+      "icp_median_loss": 0.2204,
+      "orb_timestamp_max_error_s": 0.0,
+      "frames_processed": 120
+    },
+    "rocm": {
+      "online_fps": 1.949894677155642,
+      "finalized_s": 62.806778537109494,
+      "process_wall_s": 76.32973292889073,
+      "peak_allocated_bytes": 627760128,
+      "ate_rmse_m": 0.015166845825774078,
+      "orb_ok_ratio": 1.0,
+      "icp_success_after_init": 0,
+      "icp_min_loss": 0.0444,
+      "icp_median_loss": 0.2232,
+      "orb_timestamp_max_error_s": 0.0,
+      "frames_processed": 120
+    }
+  },
+  "mapper": {
+    "cuda": {
+      "online_fps": 8.16286636782515,
+      "finalized_s": 13.526094939094037,
+      "process_wall_s": 18.51430671988055,
+      "peak_allocated_bytes": 518204416,
+      "heldout": {
+        "psnr": 7.502058744430542,
+        "ssim": 0.16414828350146612,
+        "lpips": 0.736712803443273,
+        "depth_loss": 0.34082121308892965,
+        "valid_pixel_ratio": 0.7416455298662186
+      },
+      "heldout_views": 12,
+      "frames_processed": 108
+    },
+    "rocm": {
+      "online_fps": 2.556025108945687,
+      "finalized_s": 43.588263099081814,
+      "process_wall_s": 52.64937938284129,
+      "peak_allocated_bytes": 632430592,
+      "heldout": {
+        "psnr": 7.516902883847554,
+        "ssim": 0.17321150780965885,
+        "lpips": 0.7419423336784045,
+        "depth_loss": 0.33970624301582575,
+        "valid_pixel_ratio": 0.742104783654213
+      },
+      "heldout_views": 12,
+      "frames_processed": 108
+    }
+  }
+}
